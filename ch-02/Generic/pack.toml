@@ -1,0 +1,4 @@
+[custom.all.Generic]
+type = "local"
+path = "."
+ipkg = "Generic.ipkg"

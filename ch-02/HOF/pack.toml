@@ -1,0 +1,4 @@
+[custom.all.HOF]
+type = "local"
+path = "."
+ipkg = "HOF.ipkg"

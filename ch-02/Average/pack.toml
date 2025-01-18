@@ -1,0 +1,4 @@
+[custom.all.Average]
+type = "local"
+path = "."
+ipkg = "Average.ipkg"

@@ -1,0 +1,4 @@
+[custom.all.Double]
+type = "local"
+path = "."
+ipkg = "Double.ipkg"
