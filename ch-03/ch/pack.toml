@@ -1,0 +1,10 @@
+[custom.all.ch]
+type = "local"
+path = "."
+ipkg = "ch.ipkg"
+test = "test/test.ipkg"
+
+[custom.all.ch-test]
+type = "local"
+path = "test"
+ipkg = "test.ipkg"
