@@ -1,4 +1,4 @@
-module Main
+module Lib
 
 import Data.Vect
 
