@@ -1,4 +1,4 @@
-package ex_4-1-4-test
+package ex_4_1
 version = 0.1.0
 authors = "sgf"
 -- maintainers =
@@ -13,16 +13,16 @@ authors = "sgf"
 -- langversion
 
 -- packages to add to search path
-depends = ex_4-1-4
+-- depends =
 
 -- modules to install
--- modules =
+modules = Lib
 
 -- main file (i.e. file to load at REPL)
-main = Main
+-- main =
 
 -- name of executable
-executable = "ex_4-1-4-test"
+-- executable =
 -- opts =
 sourcedir = "src"
 -- builddir =
