@@ -1,4 +1,4 @@
-package ex_3-2-3-test
+package ex_3_3-test
 version = 0.1.0
 authors = "sgf"
 -- maintainers =
@@ -13,7 +13,7 @@ authors = "sgf"
 -- langversion
 
 -- packages to add to search path
-depends = ex_3-2-3
+depends = ex_3_3
 
 -- modules to install
 -- modules =
@@ -22,7 +22,7 @@ depends = ex_3-2-3
 main = Main
 
 -- name of executable
-executable = "ex_3-2-3-test"
+executable = "ex_3_3-test"
 -- opts =
 sourcedir = "src"
 -- builddir =

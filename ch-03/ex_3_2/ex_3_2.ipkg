@@ -1,4 +1,4 @@
-package ex_3-3-2
+package ex_3_2
 version = 0.1.0
 authors = "sgf"
 -- maintainers =
@@ -22,7 +22,7 @@ modules = Lib
 --main = Main
 
 -- name of executable
---executable = "ex_3-3-2"
+--executable = "ex_3_2"
 -- opts =
 sourcedir = "src"
 -- builddir =
