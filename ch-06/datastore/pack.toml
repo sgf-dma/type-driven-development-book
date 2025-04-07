@@ -1,0 +1,10 @@
+[custom.all.datastore]
+type = "local"
+path = "."
+ipkg = "datastore.ipkg"
+test = "test/test.ipkg"
+
+[custom.all.datastore-test]
+type = "local"
+path = "test"
+ipkg = "test.ipkg"
