@@ -1,9 +1,8 @@
 module Datastore2
 
-import Data.String
-import Data.List1
 import Data.Vect
-import Datastore
+
+import Schema
 
 {-
 public export

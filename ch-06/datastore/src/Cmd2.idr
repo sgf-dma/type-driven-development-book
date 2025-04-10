@@ -1,11 +1,12 @@
 
 module Cmd2
 
-import Datastore
-import Cmd
-import Datastore2
 import Data.Vect
 import Data.String
+
+import Schema
+import Cmd
+import Datastore2
 
 getEntry2 : Integer -> {scm : Schema} -> DataStore2 scm -> Maybe (String, DataStore2 scm)
 getEntry2 pos store =
@@ -24,7 +25,7 @@ processInput2 (scm ** store) input
                                 Nothing => Just ("Out of range\n", (_ ** store))
                                 Just item => Just (display item ++ "\n", (_ ** store))
          Just Size => Just (show (size store) ++ "\n", (_ ** store))
-         Just (Search str) => ?cs -- Just (show (search (isInfixOf str) store) ++ "\n", store)
+         Just (Search scm' str) => ?cs -- Just (show (search (isInfixOf str) store) ++ "\n", store)
          Just Quit => Nothing
          Just (SetSchema scm') =>
               case setSchema2 store scm' of
