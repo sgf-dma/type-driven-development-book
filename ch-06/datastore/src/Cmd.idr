@@ -63,7 +63,7 @@ processInput store input
             Just ("ID " ++ show (size store) ++ "\n", addToStore store item)
          Just (Get pos) => getEntry pos store
          Just Size => Just (show (size store) ++ "\n", store)
-         Just (Search scm' val) => Just (displayResult (search store (searchInSchema val)), store)
+         Just (Search scm' val) => Just (displayResult (search store (?searchInSchema val)), store)
          Just Quit => Nothing
   where
     displayResult : List (Nat, SchemaType (schema store)) -> String

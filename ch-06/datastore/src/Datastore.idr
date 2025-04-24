@@ -43,6 +43,9 @@ search store p = go p 0 id (items store) []
     go _ _ zs []        = zs
     go p i zs (x :: xs) = go p (i + 1) (if p x then zs . ((i, x) ::) else zs) xs
 
+searchV : DataStore -> {scm2 : Schema} -> (SchemaType scm2 -> Bool) -> List (Nat, SchemaType scm2)
+--searchV store {scm2 = scm2} p =
+
 export
 setSchema : DataStore -> Schema -> Maybe DataStore
 setSchema store scm = case size store of

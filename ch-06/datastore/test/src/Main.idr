@@ -3,8 +3,12 @@ module Main
 import Data.String
 import Data.List
 import Data.Vect
+
+import Schema
 import Datastore
 import Cmd
+import TestUtils
+import TestSchema
 
 testData : List (String, String)
 testData   =
@@ -20,23 +24,35 @@ testData   =
   , ("search abc", "[]")
   ]
 
-runTest : List (String, String) -> Maybe (Nat, String)
-runTest ts =
-  let n = length ts
-  in  case foldl go (Right (MkData _ [])) (zip [0..n] ts) of
-           Left err => Just err
-           Right _  => Nothing
+runTest : Show b => (name : String) -> (acc0 : a) -> (p : a -> b -> Maybe a) -> List b -> IO ()
+runTest name acc0 p ts =
+    let n = length ts
+    in  either
+          (\err => putStrLn ("Test '" ++ name ++ "' failed with " ++ show err))
+          (\_   => putStrLn ("Test '" ++ name ++ "' successful!"))
+          $ foldl go (Right acc0) (zip [0..n] ts)
   where
-    go : Either (Nat, String) DataStore -> (Nat, (String, String)) -> Either (Nat, String) DataStore
+    go : Either (Nat, String) a -> (Nat, b) -> Either (Nat, String) a
     go err@(Left _) _ = err
-    go (Right store) (n, (input, expected)) =
-      case processInput store input of
-           Just (got, store') =>
-            let v = trim got
-            in  if v == expected then Right store' else Left (n, v)
-           Nothing => Left (n, "Nothing")
+    go (Right acc) (n, v) =
+      case p acc v of
+           Nothing => Left (n, show v)
+           Just acc' => Right acc'
+
+interactiveTest : DataStore -> (String, String) -> Maybe DataStore
+interactiveTest store (input, expected) = do
+      (res, store') <- processInput store input
+      let got = trim res
+      if got == expected then pure store' else Nothing
+
+checkBool : a -> Bool -> Maybe a
+checkBool _ False = Nothing
+checkBool v True = Just v
 
 main : IO ()
-main = case runTest testData of
-            Nothing => putStrLn "Test successful!"
-            Just err => putStrLn ("Test failed with " ++ show err ++ "\n")
+main = do
+  runTest "DataStore" (MkData SString _ []) interactiveTest testData
+  runTest "Utils" () checkBool testUtilsData
+  runTest "AllSubtrees" () checkBool testAllSubtrees
+  runTest "Subtrees" () checkBool testSubtrees
+

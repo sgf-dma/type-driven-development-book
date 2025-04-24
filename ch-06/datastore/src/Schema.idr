@@ -106,13 +106,11 @@ parseBySchema scm input =
        Just (res, "") => Just res
        _ => Nothing
 
+export
 schemaHeight : Schema -> Nat
 schemaHeight (s1 .+. s2) = S (maximum (schemaHeight s1) (schemaHeight s2))
 schemaHeight _ = 0
 
--- Test:
---      allSubtrees (((SInt .+. SString) .+. SInt) .+. SInt) []
---      [(0, SInt), (0, SString), (1, SInt .+. SString), (0, SInt), (2, (SInt .+. SString) .+. SInt), (0, SInt), (3, ((SInt .+. SString) .+. SInt) .+. SInt)]
 -- List all Schema subtrees.
 
 -- List of all Schema subtrees with their height.
@@ -127,6 +125,7 @@ allSubtrees s zs = zs `snoc` (0, s)
 -- The same as allSubtrees, but calculate tree height along walking the tree,
 -- instead of calling 'schemaHeight' each time. Also returns maximum tree
 -- height.
+export
 allSubtrees' : Schema -> List (Nat, Schema) -> (Nat, List (Nat, Schema))
 allSubtrees' s@(sl .+. sr) zs =
   let (hl, zs') = allSubtrees' sl zs
@@ -144,6 +143,7 @@ addToLevel m x (n ** vs) =
   in  (_ ** replaceAt fm (xs `snoc` x) vs')
 
 -- Store all Schema subtrees in a vector indexed by subtree height.
+export
 allSubtrees2 : Schema -> (n ** Vect n (List Schema)) -> (Nat, (n ** Vect n (List Schema)))
 allSubtrees2 s@(sl .+. sr) acc =
   let (hl, acc') = allSubtrees2 sl acc
@@ -166,39 +166,57 @@ allSubtrees2' : (scm : Schema) -> {n : Nat} -> Vect (maximum (S (schemaHeight sc
 
 -- But all this does not needed, in fact, to implement Search..
 
+-- Type level schema equality.
+data EqSchema : Schema -> Schema -> Type where
+  SameSchema : (scm : Schema) -> EqSchema scm scm
+
+-- Proof of schema equality at type level.
+total maybeEqualSchema : (scm1 : Schema) -> (scm2 : Schema) -> Maybe (EqSchema scm1 scm2)
+maybeEqualSchema SInt SInt = Just (SameSchema SInt)
+maybeEqualSchema SString SString = Just (SameSchema SString)
+maybeEqualSchema (l1 .+. r1) (l2 .+. r2) =
+  case maybeEqualSchema l1 l2 of
+       Nothing => Nothing
+       Just (SameSchema l) => case maybeEqualSchema r1 r2 of
+                      Nothing => Nothing
+                      Just (SameSchema r) => Just (SameSchema (l .+. r))
+maybeEqualSchema _ _ = Nothing
+
 -- Value-level implementation.
 
--- FIXME: Rewrite with eqSchema and cast?
 -- Return supplied value with Schema scm1, if both schemas are the same. Well,
 -- this will not be needed, probably, if Schema has Eq instance..
 matchSchema : (scm1 : Schema) -> (scm2 : Schema) -> SchemaType scm1 -> Maybe (SchemaType scm2)
-matchSchema SInt SInt x = Just x
-matchSchema SInt _    _ = Nothing
-matchSchema SString SString x = Just x
-matchSchema SString _       _ = Nothing
-matchSchema (s1l .+. s1r) (s2l .+. s2r) (x, y) =
-  MkPair <$> matchSchema s1l s2l x <*> matchSchema s1r s2r y
-matchSchema (s1l .+. s1r) _ _ = Nothing
+matchSchema scm1 scm2 v = (\(SameSchema _) => v) <$> maybeEqualSchema scm1 scm2
 
 -- Find all values with Schema scm2 in value with Schema scm1, if any.
-findSubtreeValuesV
-    : (scm1 : Schema) -> (scm2 : Schema)
-    -> Nat  -- Height of original scm2 Schema.
-    -> SchemaType scm1 -> List (SchemaType scm2)
-    -> (Nat, List (SchemaType scm2))
-findSubtreeValuesV scm1@(sl .+. sr) scm2 height (x, y) acc =
-  let (hl, acc')  = findSubtreeValuesV sl scm2 height x acc
-      (hr, acc'') = findSubtreeValuesV sr scm2 height y acc'
+-- (implementation).
+findSubtreeValuesV' : (scm1 : Schema) -> (scm2 : Schema)
+   -> Nat
+   -> SchemaType scm1
+   -> (Nat, List (SchemaType scm2))
+findSubtreeValuesV' scm1@(sl .+. sr) scm2 height (x, y) =
+  let (hl, left)  = findSubtreeValuesV' sl scm2 height x
+      (hr, right) = findSubtreeValuesV' sr scm2 height y
       myHeight = maximum hl hr + 1
   in  (myHeight,
-        if height /= myHeight
-           -- FIXME: Should i return acc or just [], when not equal?
-           then acc''
-           else fromMaybe acc'' (snoc acc'' <$> matchSchema (sl .+. sr) scm2 (x, y))
+        case compare myHeight height of
+             LT => []
+             GT => left ++ right
+             EQ => maybe [] singleton (matchSchema (sl .+. sr) scm2 (x, y))
       )
-findSubtreeValuesV scm1 scm2 Z     x acc =
-  (0, fromMaybe acc (snoc acc <$> matchSchema scm1 scm2 x))
-findSubtreeValuesV _    _    (S _) _ acc = (0, acc)
+findSubtreeValuesV' scm1 scm2 Z     x =
+  (0, maybe [] singleton (matchSchema scm1 scm2 x))
+findSubtreeValuesV' _    _    (S _) _ = (0, [])
+
+-- Find all values with Schema scm2 in value with Schema scm1, if any. (API)
+export
+findSubtreeValuesV
+    : (scm1 : Schema) -> (scm2 : Schema)
+    -> SchemaType scm1 -> List (SchemaType scm2)
+findSubtreeValuesV scm1 scm2 val =
+  snd $ findSubtreeValuesV' scm1 scm2 (schemaHeight scm2) val
+
 
 -- Type-level implementations.
 
@@ -224,6 +242,7 @@ subtreeValue1 (x, _) (LeftSubtree1 l)  = subtreeValue1 x l
 subtreeValue1 (_, y) (RightSubtree1 r) = subtreeValue1 y r
 
 -- Value-level schema equality.
+export
 total eqSchema : Schema -> Schema -> Bool
 eqSchema SInt SInt = True
 eqSchema SString SString = True
@@ -236,13 +255,13 @@ total findSubtrees1
     -> Nat -- Height of original scm2 Schema.
     -> (Nat, List (SchemaSubtree1 scm1))
 findSubtrees1 (sl .+. sr) scm2 height =
-  let (hl, accL) = findSubtrees1 sl scm2 height
-      (hr, accR) = findSubtrees1 sr scm2 height
+  let (hl, left) = findSubtrees1 sl scm2 height
+      (hr, right) = findSubtrees1 sr scm2 height
       myHeight = maximum hl hr + 1
   in  (myHeight
       , case compare myHeight height of
              LT => []
-             GT => map LeftSubtree1 accL ++ map RightSubtree1 accR
+             GT => map LeftSubtree1 left ++ map RightSubtree1 right
              -- Note here, because subtree's Schema scm2 is not recorded in
              -- SchemaSubtree1 type, i don't need to assert Schema equality at
              -- type-level and regular value-level comparison is enough.
@@ -298,22 +317,6 @@ subtreeValue x (JustSchema _) = x
 subtreeValue (x, _) (LeftSubtree l)  = subtreeValue x l
 subtreeValue (_, y) (RightSubtree r) = subtreeValue y r
 
--- Type level schema equality.
-data EqSchema : Schema -> Schema -> Type where
-  SameSchema : (scm : Schema) -> EqSchema scm scm
-
--- Proof of schema equality at type level.
-total maybeEqualSchema : (scm1 : Schema) -> (scm2 : Schema) -> Maybe (EqSchema scm1 scm2)
-maybeEqualSchema SInt SInt = Just (SameSchema SInt)
-maybeEqualSchema SString SString = Just (SameSchema SString)
-maybeEqualSchema (l1 .+. r1) (l2 .+. r2) =
-  case maybeEqualSchema l1 l2 of
-       Nothing => Nothing
-       Just (SameSchema l) => case maybeEqualSchema r1 r2 of
-                      Nothing => Nothing
-                      Just (SameSchema r) => Just (SameSchema (l .+. r))
-maybeEqualSchema _ _ = Nothing
-
 -- The same as 'findSubtrees1', but for 'SchemaSubtree'.
 export
 total findSubtrees
@@ -321,13 +324,13 @@ total findSubtrees
         -> Nat -- Height of original scm2 Schema.
         -> (Nat, List (SchemaSubtree scm1 scm2))
 findSubtrees (sl .+. sr) scm2 height =
-  let (hl, accL) = findSubtrees sl scm2 height
-      (hr, accR) = findSubtrees sr scm2 height
+  let (hl, left) = findSubtrees sl scm2 height
+      (hr, right) = findSubtrees sr scm2 height
       myHeight = maximum hl hr + 1
   in  (myHeight
       , case compare myHeight height of
              LT => []
-             GT => map LeftSubtree accL ++ map RightSubtree accR
+             GT => map LeftSubtree left ++ map RightSubtree right
              -- Note here, that because subtree Schema scm2 is now recorded in
              -- SchemaSubtree type, in order to use JustSchema constructor i
              -- need to prove, that scm1 and scm2 schemas are equal at type

@@ -1,6 +1,7 @@
 
 module Main
 
+import Schema
 import Datastore
 import Cmd
 import Datastore2

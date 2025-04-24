@@ -16,7 +16,7 @@ authors = "sgf"
 -- depends =
 
 -- modules to install
-modules = Datastore, Cmd
+modules = Utils, Schema, Datastore, Datastore2, Cmd, Cmd2
 
 -- main file (i.e. file to load at REPL)
 main = Main
