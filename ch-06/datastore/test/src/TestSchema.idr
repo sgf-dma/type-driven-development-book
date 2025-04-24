@@ -73,3 +73,7 @@ testSubtrees =
   , findSubtreeValuesV tScm1 ((SInt .+. SString) .+. SInt) tVal1 == [((2, "a"), 3)]
   , findSubtreeValuesV tScm1 tScm1 tVal1 == [tVal1]
   ]
+
+export
+testSchemaParse : List Bool
+testSchemaParse

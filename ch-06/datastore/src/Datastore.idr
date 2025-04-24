@@ -32,19 +32,29 @@ addToStore (MkData scm m xs) y = MkData _ _ (add' xs) -- MkData _ _ (snoc xs y)
     add' (x :: xs) = x :: add' xs
 
 export
-search : (store : DataStore) -> (SchemaType (schema store) -> Bool) -> List (Nat, SchemaType (schema store))
-search store p = go p 0 id (items store) []
+search' : (store : DataStore) -> (SchemaType (schema store) -> Bool) -> List (Nat, SchemaType (schema store))
+search' store p = foldr (go p) (const id) (items store) 0 []
   where
     -- Use composition for building results in index increasing order.
-    go : (a -> Bool) -> Nat
-          -> (List (Nat, a) -> List (Nat, a))
-          -> Vect n a
-          -> List (Nat, a) -> List (Nat, a)
-    go _ _ zs []        = zs
-    go p i zs (x :: xs) = go p (i + 1) (if p x then zs . ((i, x) ::) else zs) xs
+    go : (p : a -> Bool)
+          -> (x : a)
+          -> (zs : Nat -> List (Nat, a) -> List (Nat, a))
+          -> (i : Nat) -> List (Nat, a) -> List (Nat, a)
+    go p x zs i = if p x then zs (i + 1) . ((i, x) ::) else zs (i + 1)
 
-searchV : DataStore -> {scm2 : Schema} -> (SchemaType scm2 -> Bool) -> List (Nat, SchemaType scm2)
---searchV store {scm2 = scm2} p =
+export
+-- Search in datastore elements with Schema scm2 on which predicate p returns True.
+search : (store : DataStore) -> (scm2 : Schema) -> (p : SchemaType scm2 -> Bool) -> List (Nat, SchemaType (schema store))
+search store scm2 p = foldr go (const []) (items store) 0
+  where
+    go : SchemaType (schema store)
+       -> (Nat -> List (Nat, SchemaType (schema store)))
+       ->  Nat -> List (Nat, SchemaType (schema store))
+    go v acc i =
+      let match = any p . findSubtreeValues (schema store) scm2
+      in  if match v
+             then (i, v) :: acc (i + 1)
+             else acc (i + 1)
 
 export
 setSchema : DataStore -> Schema -> Maybe DataStore

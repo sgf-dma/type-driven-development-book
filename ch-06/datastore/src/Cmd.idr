@@ -58,12 +58,12 @@ processInput store input
          Just (SetSchema scm') =>
               case setSchema store scm' of
                    Nothing => Just ("Can't update schema\n", store)
-                   Just store' => Just ("Updated to schema " ++ displaySchema scm' ++ "\n", store')
+                   Just store' => Just ("Updated to schema " ++ displaySchema True scm' ++ "\n", store')
          Just (Add item) =>
             Just ("ID " ++ show (size store) ++ "\n", addToStore store item)
          Just (Get pos) => getEntry pos store
          Just Size => Just (show (size store) ++ "\n", store)
-         Just (Search scm' val) => Just (displayResult (search store (?searchInSchema val)), store)
+         Just (Search scm' val) => Just (displayResult (search store scm' (const True)), store)
          Just Quit => Nothing
   where
     displayResult : List (Nat, SchemaType (schema store)) -> String

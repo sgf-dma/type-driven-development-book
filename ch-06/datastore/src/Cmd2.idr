@@ -30,5 +30,5 @@ processInput2 (scm ** store) input
          Just (SetSchema scm') =>
               case setSchema2 store scm' of
                    Nothing => Just ("Can't update schema\n", (_ ** store))
-                   Just store' => Just ("Updated to schema " ++ displaySchema scm' ++ "\n", (_ ** store'))
+                   Just store' => Just ("Updated to schema " ++ displaySchema True scm' ++ "\n", (_ ** store'))
 

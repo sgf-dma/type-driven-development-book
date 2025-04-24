@@ -14,10 +14,51 @@ data Schema = SString
             | (.+.) Schema Schema
 
 export
-displaySchema : Schema -> String
-displaySchema SInt = "Int"
-displaySchema SString = "String"
-displaySchema ((.+.) s1 s2) = displaySchema s1 ++ " " ++ displaySchema s2
+displaySchema : (parens : Bool) -> Schema -> String
+displaySchema _ SInt = "Int"
+displaySchema _ SString = "String"
+displaySchema parens ((.+.) s1 s2) =
+  showParens parens (displaySchema True s1 ++ " " ++ displaySchema False s2)
+  where
+    showParens : Bool -> String -> String
+    showParens True input = "(" ++ input ++ ")"
+    showParens False input = input
+
+closeParen : (String -> Maybe (a, String)) -> String -> Maybe (a, String)
+closeParen parse input = do
+  (x, rest) <- parse input
+  let rest' = ltrim rest    -- Accept ')' with leading spaces.
+  case strM rest' of
+       StrCons ')' rest2 => pure (x, rest2)
+       _ => Nothing
+
+-- Parse parenthesis around expression parsed by another parser 'parse'.
+export
+parseParens : (parse : String -> Maybe (a, String)) -> (input : String) -> Maybe (a, String)
+parseParens parse input =
+  let input' = ltrim input
+  in  case strM input' of
+           StrCons '(' rest => closeParen parse rest
+           _ => parse input
+
+export
+parseSchemaPrefix : String -> Maybe (Schema, String)
+parseSchemaPrefix input = do
+  -- I accept tokens with leading spaces, so `ltrim` first.
+  (s1, rest) <- case span (\c => c /= ' ' && c /= '(' && c /= ')') (ltrim input) of
+       ("String", rest) => pure (SString, rest)
+       ("Int", rest) => pure (SInt, rest)
+       ("", rest) => case strM rest of
+            -- I may handle spaces explicitly or i may just skip them as
+            -- "leading spaces" with `ltrim`, as i did above.
+            --StrCons ' ' rest' => parseSchemaPrefix rest' -- Right associativity.
+            StrCons '(' rest' => closeParen parseSchemaPrefix rest'
+            StrCons ')' _ => Nothing
+            _ => Nothing
+       _ => Nothing
+  case parseSchemaPrefix rest of
+       Nothing => pure (s1, rest)
+       Just (s2, rest') => pure (s1 .+. s2, rest')
 
 export
 parseSchema : String -> Maybe Schema
@@ -242,12 +283,11 @@ subtreeValue1 (x, _) (LeftSubtree1 l)  = subtreeValue1 x l
 subtreeValue1 (_, y) (RightSubtree1 r) = subtreeValue1 y r
 
 -- Value-level schema equality.
-export
-total eqSchema : Schema -> Schema -> Bool
-eqSchema SInt SInt = True
-eqSchema SString SString = True
-eqSchema (l1 .+. r1) (l2 .+. r2) = (l1 `eqSchema` l2) && (r1 `eqSchema` r2)
-eqSchema _ _ = False
+Eq Schema where
+  SInt == SInt = True
+  SString == SString = True
+  (l1 .+. r1) == (l2 .+. r2) = (l1 == l2) && (r1 == r2)
+  _ == _ = False
 
 -- Find all subtrees with Schema scm2 in original Schema scm1.
 total findSubtrees1
@@ -265,7 +305,7 @@ findSubtrees1 (sl .+. sr) scm2 height =
              -- Note here, because subtree's Schema scm2 is not recorded in
              -- SchemaSubtree1 type, i don't need to assert Schema equality at
              -- type-level and regular value-level comparison is enough.
-             EQ => if (sl .+. sr) `eqSchema` scm2
+             EQ => if (sl .+. sr) == scm2
                       then [JustSchema1 (sl .+. sr)]
                       else []
       )
@@ -273,7 +313,7 @@ findSubtrees1 scm1 scm2 Z =
   -- Note here, because subtree's Schema scm2 is not recorded in SchemaSubtree1
   -- type, i don't need to assert Schema equality at type-level and regular
   -- value-level comparison is enough.
-  (0, if scm1 `eqSchema` scm2 then [JustSchema1 scm1] else [])
+  (0, if scm1 == scm2 then [JustSchema1 scm1] else [])
 findSubtrees1 _    _    (S _) = (0, [])
 
 findSubtreeValues1
