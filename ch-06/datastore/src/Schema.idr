@@ -24,23 +24,6 @@ displaySchema parens ((.+.) s1 s2) =
     showParens True input = "(" ++ input ++ ")"
     showParens False input = input
 
-closeParen : (String -> Maybe (a, String)) -> String -> Maybe (a, String)
-closeParen parse input = do
-  (x, rest) <- parse input
-  let rest' = ltrim rest    -- Accept ')' with leading spaces.
-  case strM rest' of
-       StrCons ')' rest2 => pure (x, rest2)
-       _ => Nothing
-
--- Parse parenthesis around expression parsed by another parser 'parse'.
-export
-parseParens : (parse : String -> Maybe (a, String)) -> (input : String) -> Maybe (a, String)
-parseParens parse input =
-  let input' = ltrim input
-  in  case strM input' of
-           StrCons '(' rest => closeParen parse rest
-           _ => parse input
-
 export
 parseSchemaPrefix : String -> Maybe (Schema, String)
 parseSchemaPrefix input = do
@@ -59,22 +42,6 @@ parseSchemaPrefix input = do
   case parseSchemaPrefix rest of
        Nothing => pure (s1, rest)
        Just (s2, rest') => pure (s1 .+. s2, rest')
-
-export
-parseSchema : String -> Maybe Schema
-parseSchema s = case parsePrefix s of
-                     Nothing => Nothing
-                     Just (s1, "") => Just s1
-                     Just (s1, rest) => case parseSchema (ltrim rest) of
-                                             Nothing => Nothing
-                                             Just s2 => Just (s1 .+. s2)
-  where
-    parsePrefix : String -> Maybe (Schema, String)
-    parsePrefix input =
-      case span (/= ' ') input of
-           ("String", rest) => Just (SString, rest)
-           ("Int", rest) => Just (SInt, rest)
-           _ => Nothing
 
 public export
 TypeSchema : Type -> Maybe Schema
@@ -95,17 +62,18 @@ display {scm = SInt} x = show x
 display {scm = SString} x = show x
 display {scm = (.+.) a b} (x, y) = "(" ++ display x ++ ", " ++ display y ++ ")"
 
+export
 parsePrefix : (scm : Schema) -> String -> Maybe (SchemaType scm, String)
 parsePrefix SInt input =
-  case span isDigit input of
+  case span isDigit (ltrim input) of
        ("", _) => Nothing
-       (s, rest) => Just (cast s, ltrim rest)
-parsePrefix SString input = getQuoted (unpack input)
+       (s, rest) => Just (cast s, rest)
+parsePrefix SString input = getQuoted (unpack (ltrim input))
   where
     getQuoted : List Char -> Maybe (String, String)
     getQuoted ('"' :: rs) = 
        case span (/= '"') rs of
-            (quoted, '"' :: rest) => Just (pack quoted, ltrim (pack rest))
+            (quoted, '"' :: rest) => Just (pack quoted, pack rest)
             _ => Nothing
     getQuoted _ = Nothing
 parsePrefix ((.+.) a b) input =
@@ -115,9 +83,7 @@ parsePrefix ((.+.) a b) input =
                                Nothing => Nothing
                                Just (right, rest) => Just ((left, right), rest)
 
--- parsePrefix' requires one or more spaces between elements. Also, as a
--- side-effect, it leaves trailing spaces as is. Thus, to use it, i need to
--- remove trailing spaces in parseBySchema.
+-- parsePrefix' requires one or more spaces between elements.
 parsePrefix' : (scm : Schema) -> String -> Maybe (SchemaType scm, String)
 parsePrefix' SInt input =
   case span isDigit input of
@@ -139,13 +105,6 @@ parsePrefix' ((.+.) a b) input =
                                (l, rr') => case parsePrefix' b (ltrim rr') of
                                                 Nothing => Nothing
                                                 Just (right, rest) => Just ((left, right), rest)
-
-export
-parseBySchema : (scm : Schema) -> String -> Maybe (SchemaType scm)
-parseBySchema scm input =
-  case parsePrefix scm input of
-       Just (res, "") => Just res
-       _ => Nothing
 
 export
 schemaHeight : Schema -> Nat
@@ -207,11 +166,20 @@ allSubtrees2' : (scm : Schema) -> {n : Nat} -> Vect (maximum (S (schemaHeight sc
 
 -- But all this does not needed, in fact, to implement Search..
 
+export
+Eq Schema where
+  SInt == SInt = True
+  SString == SString = True
+  (l1 .+. r1) == (l2 .+. r2) = (l1 == l2) && (r1 == r2)
+  _ == _ = False
+
 -- Type level schema equality.
+public export
 data EqSchema : Schema -> Schema -> Type where
   SameSchema : (scm : Schema) -> EqSchema scm scm
 
 -- Proof of schema equality at type level.
+export
 total maybeEqualSchema : (scm1 : Schema) -> (scm2 : Schema) -> Maybe (EqSchema scm1 scm2)
 maybeEqualSchema SInt SInt = Just (SameSchema SInt)
 maybeEqualSchema SString SString = Just (SameSchema SString)
@@ -281,13 +249,6 @@ total subtreeValue1
 subtreeValue1 x (JustSchema1 _) = x
 subtreeValue1 (x, _) (LeftSubtree1 l)  = subtreeValue1 x l
 subtreeValue1 (_, y) (RightSubtree1 r) = subtreeValue1 y r
-
--- Value-level schema equality.
-Eq Schema where
-  SInt == SInt = True
-  SString == SString = True
-  (l1 .+. r1) == (l2 .+. r2) = (l1 == l2) && (r1 == r2)
-  _ == _ = False
 
 -- Find all subtrees with Schema scm2 in original Schema scm1.
 total findSubtrees1
@@ -406,4 +367,37 @@ findSubtreeValues scm1 scm2 val =
       -- same for all list elements. Thus, i can just use map to find
       -- corresponding values:
   in  map (subtreeValue val) acc
+
+-- Find in a list comparison function corresponding to the schema.
+findCmp
+      : (scm : Schema)
+      -> List (scm' : Schema ** SchemaType scm' -> SchemaType scm' -> Bool)
+      -> Maybe (SchemaType scm -> SchemaType scm -> Bool)
+findCmp scm = foldr go Nothing
+  where
+    go : (scm' : Schema ** SchemaType scm' -> SchemaType scm' -> Bool)
+        -> Maybe (SchemaType scm -> SchemaType scm -> Bool)
+        -> Maybe (SchemaType scm -> SchemaType scm -> Bool)
+    go (scm' ** f) z =
+      case maybeEqualSchema scm scm' of
+           Just (SameSchema l) => Just f
+           Nothing => z
+
+-- Find (in a list) or build (from component functions from a list) comparison
+-- function corresponding to the schema.
+export
+buildMatcher
+      : (scm : Schema)
+      -> SchemaType scm
+      -> List (scm' : Schema ** SchemaType scm' -> SchemaType scm' -> Bool)
+      -> SchemaType scm -> Bool
+buildMatcher SInt x cmps = maybe (== x) ($ x) (findCmp SInt cmps)
+buildMatcher SString str cmps = maybe (isInfixOf str) ($ str) (findCmp SString cmps)
+buildMatcher scm@(l .+. r) (lval, rval) cmps =
+  maybe rec ($ (lval, rval)) (findCmp scm cmps)
+  where
+    rec : (SchemaType l, SchemaType r) -> Bool
+    rec = let lcmp = buildMatcher l lval cmps
+              rcmp = buildMatcher r rval cmps
+          in  \(x, y) => lcmp x && rcmp y
 

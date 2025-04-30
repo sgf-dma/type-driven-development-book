@@ -3,6 +3,7 @@ module TestSchema
 
 import Data.List
 import Data.Vect
+import Data.String
 
 import Utils
 import Schema
@@ -16,7 +17,7 @@ tVal1 = (((2, "a"), 3), (4, "b"))
 data Res = MkRes (Nat, Schema)
 
 Eq Res where
-  MkRes (x, scm1) == MkRes (y, scm2) = x == y && (scm1 `eqSchema` scm2)
+  MkRes (x, scm1) == MkRes (y, scm2) = x == y && (scm1 == scm2)
 
 Ord Res where
   MkRes (x, scm1) < MkRes (y, scm2) = x < y
@@ -46,8 +47,8 @@ vectToRes (_ ** vs) = foldr go (const []) vs 0
     go xs acc i = map (\s => MkRes (i, s)) xs ++ acc (i + 1)
 
 export
-testAllSubtrees : List Bool
-testAllSubtrees =
+testSchemaSubtreesAll : List Bool
+testSchemaSubtreesAll =
   [ cmpWith tRes1 . map MkRes $ allSubtrees tScm1 []
   , cmpWith tRes1 . map MkRes . snd $ allSubtrees' tScm1 []
   , cmpWith tRes1 . vectToRes . snd $ allSubtrees2 tScm1 (_ ** [])
@@ -57,8 +58,8 @@ testAllSubtrees =
     cmpWith res = all (uncurry (==)) . zip res . sort
 
 export
-testSubtrees : List Bool
-testSubtrees =
+testSchemaSubtrees : List Bool
+testSchemaSubtrees =
   [ findSubtreeValues tScm1 SInt tVal1 == [2, 3, 4]
   , findSubtreeValues tScm1 SString tVal1 == ["a", "b"]
   , findSubtreeValues tScm1 (SInt .+. SString) tVal1 == [(2, "a"), (4, "b")]
@@ -76,4 +77,122 @@ testSubtrees =
 
 export
 testSchemaParse : List Bool
-testSchemaParse
+testSchemaParse =
+  [ parseSchemaPrefix "Int" == Just (SInt, "")
+
+  -- 1-3
+  , parseSchemaPrefix "  Int" == Just (SInt, "")
+  , parseSchemaPrefix "Int  " == Just (SInt, "  ")
+  , parseSchemaPrefix "  Int  " == Just (SInt, "  ")
+
+  -- 4-8
+  , parseSchemaPrefix "(Int)" == Just (SInt, "")
+  , parseSchemaPrefix "(  Int)" == Just (SInt, "")
+  , parseSchemaPrefix "(Int  )" == Just (SInt, "")
+  , parseSchemaPrefix "(  Int  )" == Just (SInt, "")
+  , parseSchemaPrefix "  (  Int  )  " == Just (SInt, "  ")
+
+  -- 9-13
+  , parseSchemaPrefix "Int  String" == Just (SInt .+. SString, "")
+  , parseSchemaPrefix "Int  (String)" == Just (SInt .+. SString, "")
+  , parseSchemaPrefix "  ( (Int)  (String  ) )" == Just (SInt .+. SString, "")
+  , parseSchemaPrefix "  ( (  Int)  (  String) )Test" == Just (SInt .+. SString, "Test")
+  , parseSchemaPrefix "  ( (  (Int)  )  ((  String) ))(Test)" == Just (SInt .+. SString, "(Test)")
+
+  -- 14-
+  , parseSchemaPrefix "((Int  String) Int) (String String Int)"
+      == Just (((SInt .+. SString) .+. SInt) .+. (SString .+. (SString .+. SInt)), "")
+  ]
+
+export
+testSchemaValue : List Bool
+testSchemaValue =
+  [ parsePrefix SInt "2" == Just (2, "")
+  , parsePrefix SInt "  2" == Just (2, "")
+  , parsePrefix SInt "2  " == Just (2, "  ")
+  , parsePrefix SInt "  2  " == Just (2, "  ")
+
+  -- 4-7
+  , parsePrefix (SInt .+. SString) "  2   \"a b c\"  " == Just ((2, "a b c"), "  ")
+  , parsePrefix ((SInt .+. SString) .+. SString) "  2   \"a b c\"  \" d \""
+      == Just (((2, "a b c"), " d "), "")
+  , parsePrefix (SInt .+. (SString .+. SString)) "  2   \"a b c\"  \" d \""
+      == Just ((2, ("a b c", " d ")), "")
+  , parsePrefix ((SInt .+. SString) .+. (SString .+. SInt)) "  2   \"a b c\"  \" d \" 44 55"
+      == Just (((2, "a b c"), (" d ", 44)), " 55")
+
+  -- 8-
+  , parsePrefix (((SInt .+. SString) .+. SInt) .+. (SString .+. (SString .+. SInt))) "2 \" a \" 3 \"b\"   \"c  \"  4  "
+      == Just ((((2, " a "), 3), ("b", ("c  ", 4))), "  ")
+  ]
+
+export
+testSchemaDisplay : List Bool
+testSchemaDisplay =
+  [ matchSchema SInt
+  , matchSchema (SInt .+. SString)
+  , matchSchema ((SInt .+. SString) .+. SString)
+  , matchSchema (SInt .+. (SString .+. SInt))
+  , matchSchema ((SInt .+. SString) .+. (SString .+. SInt))
+  , matchSchema (((SInt .+. SString) .+. SInt) .+. (SString .+. (SString .+. SInt)))
+  ]
+  where
+    matchSchema : Schema -> Bool
+    matchSchema scm = fromMaybe False $ do
+      let d = displaySchema False scm
+          d' = displaySchema True scm
+      (scmRes,  "") <- parseSchemaPrefix d  | _ => Nothing
+      (scmRes', "") <- parseSchemaPrefix d' | _ => Nothing
+      pure (scmRes == scmRes' && scmRes == scm)
+
+exMatchers : List (scm : Schema ** SchemaType scm -> SchemaType scm -> Bool)
+exMatchers =
+  [(SInt ** (<)), (SString ** isPrefixOf), (SInt .+. SString ** f)]
+  where
+    f : (Int, String) -> (Int, String) -> Bool
+    f (num, str) (x, s) = num == x && str == s
+
+export
+testSchemaMatcher : List Bool
+testSchemaMatcher =
+  [ buildMatcher SInt 1 exMatchers 2
+  , buildMatcher SInt 2 exMatchers 1 == False
+  , buildMatcher SString "a" exMatchers "abc"
+  , buildMatcher SString "b" exMatchers "abc" == False
+
+  -- 4-6
+  , buildMatcher (SInt .+. SString) (1, "abc") exMatchers (1, "abc")
+  , buildMatcher (SInt .+. SString) (1, "abc") exMatchers (2, "abc") == False
+  , buildMatcher (SInt .+. SString) (1, "a") exMatchers (2, "abc") == False
+
+  -- 7-10
+  , buildMatcher (SString .+. SInt) ("a", 1) exMatchers ("abc", 2)
+  , buildMatcher (SString .+. SInt) ("a", 2) exMatchers ("abc", 1) == False
+  , buildMatcher (SString .+. SInt) ("b", 1) exMatchers ("abc", 2) == False
+  , buildMatcher (SString .+. SInt) ("abc", 1) exMatchers ("abc", 1) == False
+
+  -- 11-12
+  , buildMatcher (SInt .+. (SInt .+. SString)) (3, (1, "abc")) exMatchers (4, (1, "abc"))
+  , buildMatcher (SInt .+. (SInt .+. SString)) (4, (1, "abc")) exMatchers (3, (1, "abc")) == False
+
+  -- 11-14
+  , buildMatcher ((SString .+. SInt) .+. (SInt .+. SString)) (("a", 3), (1, "abc"))
+      exMatchers (("abc", 4), (1, "abc"))
+  , buildMatcher ((SString .+. SInt) .+. (SInt .+. SString)) (("a", 4), (1, "abc"))
+      exMatchers (("abc", 3), (1, "abc")) == False
+  , buildMatcher ((SString .+. SInt) .+. (SInt .+. SString)) (("b", 3), (1, "abc"))
+      exMatchers (("abc", 4), (1, "abc")) == False
+  , buildMatcher ((SString .+. SInt) .+. (SInt .+. SString)) (("abc", 3), (1, "abc"))
+      exMatchers (("abc", 3), (1, "abc")) == False
+
+  -- 15-18
+  , buildMatcher ((SString .+. SInt) .+. (SInt .+. SString)) (("a", 3), (1, "abc"))
+      [] (("abc", 3), (1, "abc"))
+  , buildMatcher ((SString .+. SInt) .+. (SInt .+. SString)) (("c", 3), (1, "b"))
+      [] (("abc", 3), (1, "abc"))
+  , buildMatcher ((SString .+. SInt) .+. (SInt .+. SString)) (("a", 4), (1, "abc"))
+      [] (("abc", 3), (1, "abc")) == False
+  , buildMatcher ((SString .+. SInt) .+. (SInt .+. SString)) (("d", 3), (1, "c"))
+      [] (("abc", 3), (1, "abc")) == False
+  ]
+

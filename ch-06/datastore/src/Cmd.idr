@@ -24,17 +24,20 @@ data Command' : Type -> Type where
   Quit' : Command' (SchemaType scm)
 
 parseCommand : {scm : Schema} -> String -> String -> Maybe (Command scm)
-parseCommand "schema" args = case parseSchema args of
-                               Nothing => Nothing
-                               Just scm => Just (SetSchema scm)
-parseCommand "add" args = case parseBySchema scm args of 
-                               Nothing => Nothing
-                               Just val => Just (Add val)
+parseCommand "schema" args = do
+  (scm, "") <- parseSchemaPrefix args | _ => Nothing
+  pure (SetSchema scm)
+parseCommand "add" args = do
+  (val, "") <- parsePrefix scm args | _ => Nothing
+  pure (Add val)
 parseCommand "get" args = if all isDigit (unpack args)
                              then Just (Get (cast args))
                              else Nothing
 parseCommand "size" "" = Just Size
---parseCommand "search" args = Just (Search args)
+parseCommand "search" args = do
+  (scm, rest) <- parseSchemaPrefix args
+  (val, "") <- parsePrefix scm rest | _ => Nothing
+  pure (Search scm val)
 parseCommand "quit" "" = Just Quit
 parseCommand _ _ = Nothing
 
@@ -63,7 +66,7 @@ processInput store input
             Just ("ID " ++ show (size store) ++ "\n", addToStore store item)
          Just (Get pos) => getEntry pos store
          Just Size => Just (show (size store) ++ "\n", store)
-         Just (Search scm' val) => Just (displayResult (search store scm' (const True)), store)
+         Just (Search scm' val) => Just (displayResult (search store scm' (const True)) ++ "\n", store)
          Just Quit => Nothing
   where
     displayResult : List (Nat, SchemaType (schema store)) -> String

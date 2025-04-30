@@ -9,6 +9,7 @@ import Datastore
 import Cmd
 import TestUtils
 import TestSchema
+import TestDatastore
 
 testData : List (String, String)
 testData   =
@@ -53,6 +54,11 @@ main : IO ()
 main = do
   runTest "DataStore" (MkData SString _ []) interactiveTest testData
   runTest "Utils" () checkBool testUtilsData
-  runTest "AllSubtrees" () checkBool testAllSubtrees
-  runTest "Subtrees" () checkBool testSubtrees
+  runTest "SchemaSubtreesAll" () checkBool testSchemaSubtreesAll
+  runTest "SchemaSubtrees" () checkBool testSchemaSubtrees
+  runTest "SchemaParse" () checkBool testSchemaParse
+  runTest "SchemaDisplay" () checkBool testSchemaParse
+  runTest "SchemaValue" () checkBool testSchemaValue
+  runTest "SchemaMatcher" () checkBool testSchemaMatcher
+  runTest "StoreSearch" () checkBool testStoreSearch
 

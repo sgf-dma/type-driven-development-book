@@ -1,5 +1,6 @@
 module Utils
 
+import Data.String
 import Data.Fin
 import Data.Vect
 
@@ -44,3 +45,23 @@ padEmpty (S k) {t = Z}   _  = go (S (S k))
     go Z = []
     go (S k) = [] :: go k
 padEmpty (S k) {t = S t} (v :: vs) = v :: padEmpty k vs
+
+-- Match closing parenthesis.
+export
+closeParen : (String -> Maybe (a, String)) -> String -> Maybe (a, String)
+closeParen parse input = do
+  (x, rest) <- parse input
+  let rest' = ltrim rest    -- Accept ')' with leading spaces.
+  case strM rest' of
+       StrCons ')' rest2 => pure (x, rest2)
+       _ => Nothing
+
+-- Parse parenthesis around expression parsed by another parser 'parse'.
+export
+parseParens : (parse : String -> Maybe (a, String)) -> (input : String) -> Maybe (a, String)
+parseParens parse input =
+  let input' = ltrim input
+  in  case strM input' of
+           StrCons '(' rest => closeParen parse rest
+           _ => parse input
+
