@@ -8,6 +8,80 @@ import Data.String
 import Utils
 import Schema
 
+export
+testSchemaDisplay : List Bool
+testSchemaDisplay =
+  [ matchSchema SInt
+  , matchSchema (SInt .+. SString)
+  , matchSchema ((SInt .+. SString) .+. SString)
+  , matchSchema (SInt .+. (SString .+. SInt))
+  , matchSchema ((SInt .+. SString) .+. (SString .+. SInt))
+  , matchSchema (((SInt .+. SString) .+. SInt) .+. (SString .+. (SString .+. SInt)))
+  ]
+  where
+    matchSchema : Schema -> Bool
+    matchSchema scm = fromMaybe False $ do
+      let d = displaySchema False scm
+          d' = displaySchema True scm
+      (scmRes,  "") <- parseSchemaPrefix d  | _ => Nothing
+      (scmRes', "") <- parseSchemaPrefix d' | _ => Nothing
+      pure (scmRes == scmRes' && scmRes == scm)
+
+export
+testSchemaParse : List Bool
+testSchemaParse =
+  [ parseSchemaPrefix "Int" == Just (SInt, "")
+
+  -- 1-3
+  , parseSchemaPrefix "  Int" == Just (SInt, "")
+  , parseSchemaPrefix "Int  " == Just (SInt, "  ")
+  , parseSchemaPrefix "  Int  " == Just (SInt, "  ")
+
+  -- 4-8
+  , parseSchemaPrefix "(Int)" == Just (SInt, "")
+  , parseSchemaPrefix "(  Int)" == Just (SInt, "")
+  , parseSchemaPrefix "(Int  )" == Just (SInt, "")
+  , parseSchemaPrefix "(  Int  )" == Just (SInt, "")
+  , parseSchemaPrefix "  (  Int  )  " == Just (SInt, "  ")
+
+  -- 9-13
+  , parseSchemaPrefix "Int  String" == Just (SInt .+. SString, "")
+  , parseSchemaPrefix "Int  (String)" == Just (SInt .+. SString, "")
+  , parseSchemaPrefix "  ( (Int)  (String  ) )" == Just (SInt .+. SString, "")
+  , parseSchemaPrefix "  ( (  Int)  (  String) )Test" == Just (SInt .+. SString, "Test")
+  , parseSchemaPrefix "  ( (  (Int)  )  ((  String) ))(Test)" == Just (SInt .+. SString, "(Test)")
+
+  -- 14-
+  , parseSchemaPrefix "((Int  String) Int) (String String Int)"
+      == Just (((SInt .+. SString) .+. SInt) .+. (SString .+. (SString .+. SInt)), "")
+  ]
+
+export
+testSchemaValue : List Bool
+testSchemaValue =
+  [ parsePrefix False SInt "2" == Just (2, "")
+  , parsePrefix False SInt "  2" == Just (2, "")
+  , parsePrefix False SInt "2  " == Just (2, "  ")
+  , parsePrefix False SInt "  2  " == Just (2, "  ")
+  , parsePrefix True SInt "  (2)  " == Just (2, "  ")
+  , parsePrefix False SInt "( (2 ))  " == Just (2, "  ")
+  , parsePrefix True SInt "( (( 2) ))  " == Just (2, "  ")
+  , parsePrefix True SInt "(( ( 2 )  ))  " == Just (2, "  ")
+
+  -- 8-11
+  , parsePrefix False (SInt .+. SString) "  2  ( (\"a b c\" ))  " == Just ((2, "a b c"), "  ")
+  , parsePrefix True ((SInt .+. SString) .+. SString) " ( ( 2   \"a b c\")  \" d \")"
+      == Just (((2, "a b c"), " d "), "")
+  , parsePrefix False (SInt .+. (SString .+. SString)) "  2   (\"a b c\")  \" d \""
+      == Just ((2, ("a b c", " d ")), "")
+  , parsePrefix False ((SInt .+. SString) .+. (SString .+. SInt)) "  ((2   \"a b c\")  ((\" d \" 44) )) 55"
+      == Just (((2, "a b c"), (" d ", 44)), " 55")
+
+  -- 12-
+  , parsePrefix False (((SInt .+. SString) .+. SInt) .+. (SString .+. (SString .+. SInt))) "((  (2 \" a \") 3) ) (\"b\"   (\"c  \")  ( (4)))  "
+      == Just ((((2, " a "), 3), ("b", ("c  ", 4))), "  ")
+  ]
+
 tScm1 : Schema
 tScm1 = (((SInt .+. SString) .+. SInt) .+. (SInt .+. SString))
 
@@ -37,8 +111,6 @@ tRes1 =
 
   , MkRes (3, (((SInt .+. SString) .+. SInt) .+. (SInt .+. SString)))
   ]
-
-sortRes : List (Nat, Schema) -> List (Nat, Schema)
 
 vectToRes : (n ** Vect n (List Schema)) -> List Res
 vectToRes (_ ** vs) = foldr go (const []) vs 0
@@ -74,76 +146,6 @@ testSchemaSubtrees =
   , findSubtreeValuesV tScm1 ((SInt .+. SString) .+. SInt) tVal1 == [((2, "a"), 3)]
   , findSubtreeValuesV tScm1 tScm1 tVal1 == [tVal1]
   ]
-
-export
-testSchemaParse : List Bool
-testSchemaParse =
-  [ parseSchemaPrefix "Int" == Just (SInt, "")
-
-  -- 1-3
-  , parseSchemaPrefix "  Int" == Just (SInt, "")
-  , parseSchemaPrefix "Int  " == Just (SInt, "  ")
-  , parseSchemaPrefix "  Int  " == Just (SInt, "  ")
-
-  -- 4-8
-  , parseSchemaPrefix "(Int)" == Just (SInt, "")
-  , parseSchemaPrefix "(  Int)" == Just (SInt, "")
-  , parseSchemaPrefix "(Int  )" == Just (SInt, "")
-  , parseSchemaPrefix "(  Int  )" == Just (SInt, "")
-  , parseSchemaPrefix "  (  Int  )  " == Just (SInt, "  ")
-
-  -- 9-13
-  , parseSchemaPrefix "Int  String" == Just (SInt .+. SString, "")
-  , parseSchemaPrefix "Int  (String)" == Just (SInt .+. SString, "")
-  , parseSchemaPrefix "  ( (Int)  (String  ) )" == Just (SInt .+. SString, "")
-  , parseSchemaPrefix "  ( (  Int)  (  String) )Test" == Just (SInt .+. SString, "Test")
-  , parseSchemaPrefix "  ( (  (Int)  )  ((  String) ))(Test)" == Just (SInt .+. SString, "(Test)")
-
-  -- 14-
-  , parseSchemaPrefix "((Int  String) Int) (String String Int)"
-      == Just (((SInt .+. SString) .+. SInt) .+. (SString .+. (SString .+. SInt)), "")
-  ]
-
-export
-testSchemaValue : List Bool
-testSchemaValue =
-  [ parsePrefix SInt "2" == Just (2, "")
-  , parsePrefix SInt "  2" == Just (2, "")
-  , parsePrefix SInt "2  " == Just (2, "  ")
-  , parsePrefix SInt "  2  " == Just (2, "  ")
-
-  -- 4-7
-  , parsePrefix (SInt .+. SString) "  2   \"a b c\"  " == Just ((2, "a b c"), "  ")
-  , parsePrefix ((SInt .+. SString) .+. SString) "  2   \"a b c\"  \" d \""
-      == Just (((2, "a b c"), " d "), "")
-  , parsePrefix (SInt .+. (SString .+. SString)) "  2   \"a b c\"  \" d \""
-      == Just ((2, ("a b c", " d ")), "")
-  , parsePrefix ((SInt .+. SString) .+. (SString .+. SInt)) "  2   \"a b c\"  \" d \" 44 55"
-      == Just (((2, "a b c"), (" d ", 44)), " 55")
-
-  -- 8-
-  , parsePrefix (((SInt .+. SString) .+. SInt) .+. (SString .+. (SString .+. SInt))) "2 \" a \" 3 \"b\"   \"c  \"  4  "
-      == Just ((((2, " a "), 3), ("b", ("c  ", 4))), "  ")
-  ]
-
-export
-testSchemaDisplay : List Bool
-testSchemaDisplay =
-  [ matchSchema SInt
-  , matchSchema (SInt .+. SString)
-  , matchSchema ((SInt .+. SString) .+. SString)
-  , matchSchema (SInt .+. (SString .+. SInt))
-  , matchSchema ((SInt .+. SString) .+. (SString .+. SInt))
-  , matchSchema (((SInt .+. SString) .+. SInt) .+. (SString .+. (SString .+. SInt)))
-  ]
-  where
-    matchSchema : Schema -> Bool
-    matchSchema scm = fromMaybe False $ do
-      let d = displaySchema False scm
-          d' = displaySchema True scm
-      (scmRes,  "") <- parseSchemaPrefix d  | _ => Nothing
-      (scmRes', "") <- parseSchemaPrefix d' | _ => Nothing
-      pure (scmRes == scmRes' && scmRes == scm)
 
 exMatchers : List (scm : Schema ** SchemaType scm -> SchemaType scm -> Bool)
 exMatchers =

@@ -13,7 +13,7 @@ authors = "sgf"
 -- langversion
 
 -- packages to add to search path
--- depends =
+depends = contrib
 
 -- modules to install
 modules = Utils, Schema, Datastore, Datastore2, Cmd, Cmd2

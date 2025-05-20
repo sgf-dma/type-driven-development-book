@@ -44,8 +44,8 @@ setSchema2 store scm = case size store of
                        S _ => Nothing
 
 export
-getEntry2' : Integer -> {scm : Schema} -> DataStore2 scm -> Maybe (SchemaType scm)
-getEntry2' pos store =
+getEntry2 : Integer -> {scm : Schema} -> DataStore2 scm -> Maybe (SchemaType scm)
+getEntry2 pos store =
   case integerToFin pos (size store) of
        Nothing => Nothing
        Just idx => Just (index idx (items store))

@@ -3,6 +3,9 @@ module Schema
 
 import Data.String
 import Data.Vect
+import Control.Arrow
+import Data.Morphisms
+import Control.Category
 
 import Utils
 
@@ -18,7 +21,8 @@ displaySchema : (parens : Bool) -> Schema -> String
 displaySchema _ SInt = "Int"
 displaySchema _ SString = "String"
 displaySchema parens ((.+.) s1 s2) =
-  showParens parens (displaySchema True s1 ++ " " ++ displaySchema False s2)
+  -- Show parens around both sides of .+. . It's easy to read.
+  showParens parens (displaySchema True s1 ++ " " ++ displaySchema True s2)
   where
     showParens : Bool -> String -> String
     showParens True input = "(" ++ input ++ ")"
@@ -26,22 +30,28 @@ displaySchema parens ((.+.) s1 s2) =
 
 export
 parseSchemaPrefix : String -> Maybe (Schema, String)
-parseSchemaPrefix input = do
-  -- I accept tokens with leading spaces, so `ltrim` first.
-  (s1, rest) <- case span (\c => c /= ' ' && c /= '(' && c /= ')') (ltrim input) of
-       ("String", rest) => pure (SString, rest)
-       ("Int", rest) => pure (SInt, rest)
-       ("", rest) => case strM rest of
-            -- I may handle spaces explicitly or i may just skip them as
-            -- "leading spaces" with `ltrim`, as i did above.
-            --StrCons ' ' rest' => parseSchemaPrefix rest' -- Right associativity.
-            StrCons '(' rest' => closeParen parseSchemaPrefix rest'
-            StrCons ')' _ => Nothing
-            _ => Nothing
-       _ => Nothing
-  case parseSchemaPrefix rest of
-       Nothing => pure (s1, rest)
-       Just (s2, rest') => pure (s1 .+. s2, rest')
+parseSchemaPrefix input =
+  let m1 = parseToken input
+  in  (m1 >>= applyKleisli {f = Maybe} (
+                second (Kleisli parseSchemaPrefix)
+                >>> arrow (\(s1, (s2, rest)) => (s1 .+. s2, rest))
+              )
+      ) <|> m1
+  where
+    parseToken : String -> Maybe (Schema, String)
+    parseToken input =
+      -- I accept tokens with leading spaces, so `ltrim` first.
+      case span (\c => c /= ' ' && c /= '(' && c /= ')') (ltrim input) of
+           ("String", rest) => pure (SString, rest)
+           ("Int", rest) => pure (SInt, rest)
+           ("", rest) => case strM rest of
+                -- I may handle spaces explicitly or i may just skip them as
+                -- "leading spaces" with `ltrim`, as i did above.
+                --StrCons ' ' rest' => parseSchemaPrefix rest' -- Right associativity.
+                StrCons '(' rest' => closeParen parseSchemaPrefix rest'
+                StrCons ')' _ => Nothing
+                _ => Nothing
+           _ => Nothing
 
 public export
 TypeSchema : Type -> Maybe Schema
@@ -62,26 +72,41 @@ display {scm = SInt} x = show x
 display {scm = SString} x = show x
 display {scm = (.+.) a b} (x, y) = "(" ++ display x ++ ", " ++ display y ++ ")"
 
+-- Parse value according to Schema. Parts of Schema, which require braces,
+-- require them in a value too. Comma (for tuples) is not used in value, just
+-- space.
 export
-parsePrefix : (scm : Schema) -> String -> Maybe (SchemaType scm, String)
-parsePrefix SInt input =
-  case span isDigit (ltrim input) of
-       ("", _) => Nothing
-       (s, rest) => Just (cast s, rest)
-parsePrefix SString input = getQuoted (unpack (ltrim input))
+parsePrefix : (parens : Bool)
+            -> (scm : Schema)
+            -> (input : String)
+            -> Maybe (SchemaType scm, String)
+parsePrefix _ SInt input =
+    parseInt input <|> parseParens (parsePrefix False SInt) input
+  where
+    parseInt : (inp : String) -> Maybe (Int, String)
+    parseInt inp = case span isDigit (ltrim inp) of
+                        ("", _) => Nothing
+                        (s, rest) => Just (cast s, rest)
+parsePrefix _ SString input =
+    (getQuoted . unpack . ltrim $ input)
+    <|> parseParens (parsePrefix False SString) input
   where
     getQuoted : List Char -> Maybe (String, String)
-    getQuoted ('"' :: rs) = 
+    getQuoted ('"' :: rs) =
        case span (/= '"') rs of
             (quoted, '"' :: rest) => Just (pack quoted, pack rest)
             _ => Nothing
     getQuoted _ = Nothing
-parsePrefix ((.+.) a b) input =
-  case parsePrefix a input of
-       Nothing => Nothing
-       Just (left, rr) => case parsePrefix b rr of
-                               Nothing => Nothing
-                               Just (right, rest) => Just ((left, right), rest)
+parsePrefix parens ((.+.) a b) input =
+  let m = \inp => flip applyKleisli inp $
+                  parse True a
+                  >>> second (parse False b)
+                  >>> arrow (\(left, (right, rest)) => ((left, right), rest))
+  in  parseParens (parsePrefix False (a .+. b)) input
+      <|> if parens then Nothing else m input
+  where
+    parse : (parens2 : Bool) -> (scm : Schema) -> Kleislimorphism Maybe String (SchemaType scm, String)
+    parse parens2 = Kleisli .* (parsePrefix parens2)
 
 -- parsePrefix' requires one or more spaces between elements.
 parsePrefix' : (scm : Schema) -> String -> Maybe (SchemaType scm, String)
@@ -96,15 +121,14 @@ parsePrefix' SString input =
                                   StrCons _ rest => Just (val, rest)
                                   _  => Nothing
        _ => Nothing
-parsePrefix' ((.+.) a b) input =
-  case parsePrefix' a input of
-       Nothing => Nothing
-       Just (left, rr) => case span (== ' ') rr of
-                               (_, "") => Nothing
-                               ("", _) => Nothing
-                               (l, rr') => case parsePrefix' b (ltrim rr') of
-                                                Nothing => Nothing
-                                                Just (right, rest) => Just ((left, right), rest)
+parsePrefix' ((.+.) a b) input = do
+  (left, rr) <- parsePrefix' a input
+  case span (== ' ') rr of
+       (_, "") => Nothing
+       ("", _) => Nothing
+       (l, rr') => do
+          (right, rest) <- parsePrefix' b (ltrim rr')
+          pure ((left, right), rest)
 
 export
 schemaHeight : Schema -> Nat
@@ -183,12 +207,10 @@ export
 total maybeEqualSchema : (scm1 : Schema) -> (scm2 : Schema) -> Maybe (EqSchema scm1 scm2)
 maybeEqualSchema SInt SInt = Just (SameSchema SInt)
 maybeEqualSchema SString SString = Just (SameSchema SString)
-maybeEqualSchema (l1 .+. r1) (l2 .+. r2) =
-  case maybeEqualSchema l1 l2 of
-       Nothing => Nothing
-       Just (SameSchema l) => case maybeEqualSchema r1 r2 of
-                      Nothing => Nothing
-                      Just (SameSchema r) => Just (SameSchema (l .+. r))
+maybeEqualSchema (l1 .+. r1) (l2 .+. r2) = do
+  (SameSchema l) <- maybeEqualSchema l1 l2
+  (SameSchema r) <- maybeEqualSchema r1 r2
+  pure (SameSchema (l .+. r))
 maybeEqualSchema _ _ = Nothing
 
 -- Value-level implementation.
@@ -201,15 +223,15 @@ matchSchema scm1 scm2 v = (\(SameSchema _) => v) <$> maybeEqualSchema scm1 scm2
 -- Find all values with Schema scm2 in value with Schema scm1, if any.
 -- (implementation).
 findSubtreeValuesV' : (scm1 : Schema) -> (scm2 : Schema)
-   -> Nat
+   -> (scm2Height : Nat)
    -> SchemaType scm1
    -> (Nat, List (SchemaType scm2))
-findSubtreeValuesV' scm1@(sl .+. sr) scm2 height (x, y) =
-  let (hl, left)  = findSubtreeValuesV' sl scm2 height x
-      (hr, right) = findSubtreeValuesV' sr scm2 height y
+findSubtreeValuesV' scm1@(sl .+. sr) scm2 scm2Height (x, y) =
+  let (hl, left)  = findSubtreeValuesV' sl scm2 scm2Height x
+      (hr, right) = findSubtreeValuesV' sr scm2 scm2Height y
       myHeight = maximum hl hr + 1
   in  (myHeight,
-        case compare myHeight height of
+        case compare myHeight scm2Height of
              LT => []
              GT => left ++ right
              EQ => maybe [] singleton (matchSchema (sl .+. sr) scm2 (x, y))
@@ -223,8 +245,7 @@ export
 findSubtreeValuesV
     : (scm1 : Schema) -> (scm2 : Schema)
     -> SchemaType scm1 -> List (SchemaType scm2)
-findSubtreeValuesV scm1 scm2 val =
-  snd $ findSubtreeValuesV' scm1 scm2 (schemaHeight scm2) val
+findSubtreeValuesV scm1 scm2 = snd . findSubtreeValuesV' scm1 scm2 (schemaHeight scm2)
 
 
 -- Type-level implementations.
@@ -255,12 +276,12 @@ total findSubtrees1
     : (scm1 : Schema) -> (scm2 : Schema)
     -> Nat -- Height of original scm2 Schema.
     -> (Nat, List (SchemaSubtree1 scm1))
-findSubtrees1 (sl .+. sr) scm2 height =
-  let (hl, left) = findSubtrees1 sl scm2 height
-      (hr, right) = findSubtrees1 sr scm2 height
+findSubtrees1 (sl .+. sr) scm2 scm2Height =
+  let (hl, left) = findSubtrees1 sl scm2 scm2Height
+      (hr, right) = findSubtrees1 sr scm2 scm2Height
       myHeight = maximum hl hr + 1
   in  (myHeight
-      , case compare myHeight height of
+      , case compare myHeight scm2Height of
              LT => []
              GT => map LeftSubtree1 left ++ map RightSubtree1 right
              -- Note here, because subtree's Schema scm2 is not recorded in
@@ -293,9 +314,16 @@ findSubtreeValues1 scm1 scm2 val =
                                 --
                                 --      SchemaType (subtreeSchema1 sub)
                                 --
-                                -- but i can't prove, that for all elements of
-                                -- list 'acc' function subtreeSchema1 will
-                                -- return the same Schema.
+                                -- but i can't prove, that for all elements of list 'acc' function subtreeSchema1
+                                -- will return the same Schema. Example:
+                                --
+                                --      :t (RightSubtree1 {k = SInt} (JustSchema1 SString))
+                                --      RightSubtree1 (JustSchema1 SString) : SchemaSubtree1 (SInt .+. SString)
+                                --      :t (LeftSubtree1 {k = SString} (JustSchema1 SInt))
+                                --      LeftSubtree1 (JustSchema1 SInt) : SchemaSubtree1 (SInt .+. SString)
+                                --
+                                -- SchemaSubtree1 type is the same, but underlying subtree schema is obviously different.
+                                --
                                 -- I.e. i can't implement following call:
                                 --ws = map (subtreeValue1 val) acc
                             in  ?wrong1
@@ -309,7 +337,7 @@ data SchemaSubtree : Schema -> Schema -> Type where
   LeftSubtree  : {k : Schema} -> SchemaSubtree l sub -> SchemaSubtree (l .+. k) sub
   RightSubtree : {k : Schema} -> SchemaSubtree r sub -> SchemaSubtree (k .+. r) sub
 
--- I don't need subtreeSchema1 anymore, because subtree schema is recorded in
+-- I don't need subtreeSchema anymore, because subtree schema is recorded in
 -- type.
 
 export
@@ -339,7 +367,25 @@ findSubtrees (sl .+. sr) scm2 height =
              EQ => case maybeEqualSchema (sl .+. sr) scm2 of
                         Just (SameSchema (l .+. r)) => [JustSchema (l .+. r)]
                         _ => []
+             -- Alternatively, i may implement schema equality inline without
+             -- 'EqSchema' type. But the 'EqSchema' implementation is more
+             -- clear, probably.
+             {-
+             EQ => case maybeJustSubtree (sl .+. sr) scm2 of
+                        Just sub => [sub]
+                        _ => []
+                        -}
       )
+  where
+    -- Return subtree schema as a subtree of itself, if scm1 is equal to scm2.
+    maybeJustSubtree : (scm1 : Schema) -> (scm2 : Schema) -> Maybe (SchemaSubtree scm1 scm2)
+    maybeJustSubtree SInt SInt = Just (JustSchema SInt)
+    maybeJustSubtree SString SString = Just (JustSchema SString)
+    maybeJustSubtree (l1 .+. r1) (l2 .+. r2) = do
+      (JustSchema l) <- maybeJustSubtree l1 l2 | _ => Nothing
+      (JustSchema r) <- maybeJustSubtree r1 r2 | _ => Nothing
+      pure (JustSchema (l .+. r))
+    maybeJustSubtree _ _ = Nothing
 findSubtrees scm1 scm2 Z =
   (0,
       -- Note here, that because subtree Schema scm2 is now recorded in
@@ -363,9 +409,9 @@ findSubtreeValues scm1 scm2 val =
       --
       --        List (SchemaSubtree scm1 scm2)
       --
-      -- and now subtree schema is recorded in type and it's known to be the
+      -- and because subtree schema is recorded in type, it's known to be the
       -- same for all list elements. Thus, i can just use map to find
-      -- corresponding values:
+      -- corresponding values.
   in  map (subtreeValue val) acc
 
 -- Find in a list comparison function corresponding to the schema.
@@ -391,13 +437,13 @@ buildMatcher
       -> SchemaType scm
       -> List (scm' : Schema ** SchemaType scm' -> SchemaType scm' -> Bool)
       -> SchemaType scm -> Bool
-buildMatcher SInt x cmps = maybe (== x) ($ x) (findCmp SInt cmps)
-buildMatcher SString str cmps = maybe (isInfixOf str) ($ str) (findCmp SString cmps)
-buildMatcher scm@(l .+. r) (lval, rval) cmps =
-  maybe rec ($ (lval, rval)) (findCmp scm cmps)
+buildMatcher SInt x funcs = maybe (== x) ($ x) (findCmp SInt funcs)
+buildMatcher SString str funcs = maybe (isInfixOf str) ($ str) (findCmp SString funcs)
+buildMatcher scm@(l .+. r) (lval, rval) funcs =
+  maybe rec ($ (lval, rval)) (findCmp scm funcs)
   where
     rec : (SchemaType l, SchemaType r) -> Bool
-    rec = let lcmp = buildMatcher l lval cmps
-              rcmp = buildMatcher r rval cmps
+    rec = let lcmp = buildMatcher l lval funcs
+              rcmp = buildMatcher r rval funcs
           in  \(x, y) => lcmp x && rcmp y
 

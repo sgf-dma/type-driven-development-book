@@ -10,23 +10,10 @@ import Cmd
 import TestUtils
 import TestSchema
 import TestDatastore
+import TestCmd
 
-testData : List (String, String)
-testData   =
-  [ ("add Shearer", "ID 0")
-  , ("get 0", "Shearer")
-  , ("add Milburn", "ID 1")
-  , ("get 1", "Milburn")
-  , ("add White", "ID 2")
-  , ("get 2", "White")
-  , ("size", "3")
-  , ("search Mil", "[(1, \"Milburn\")]")
-  , ("search i", "[(1, \"Milburn\"), (2, \"White\")]")
-  , ("search abc", "[]")
-  ]
-
-runTest : Show b => (name : String) -> (acc0 : a) -> (p : a -> b -> Maybe a) -> List b -> IO ()
-runTest name acc0 p ts =
+runTest : Show b => (name : String) -> (acc0 : a) -> (run : a -> b -> Maybe a) -> List b -> IO ()
+runTest name acc0 run ts =
     let n = length ts
     in  either
           (\err => putStrLn ("Test '" ++ name ++ "' failed with " ++ show err))
@@ -36,7 +23,7 @@ runTest name acc0 p ts =
     go : Either (Nat, String) a -> (Nat, b) -> Either (Nat, String) a
     go err@(Left _) _ = err
     go (Right acc) (n, v) =
-      case p acc v of
+      case run acc v of
            Nothing => Left (n, show v)
            Just acc' => Right acc'
 
@@ -52,13 +39,13 @@ checkBool v True = Just v
 
 main : IO ()
 main = do
-  runTest "DataStore" (MkData SString _ []) interactiveTest testData
   runTest "Utils" () checkBool testUtilsData
+  runTest "SchemaDisplay" () checkBool testSchemaParse
+  runTest "SchemaParse" () checkBool testSchemaParse
+  runTest "SchemaValue" () checkBool testSchemaValue
   runTest "SchemaSubtreesAll" () checkBool testSchemaSubtreesAll
   runTest "SchemaSubtrees" () checkBool testSchemaSubtrees
-  runTest "SchemaParse" () checkBool testSchemaParse
-  runTest "SchemaDisplay" () checkBool testSchemaParse
-  runTest "SchemaValue" () checkBool testSchemaValue
   runTest "SchemaMatcher" () checkBool testSchemaMatcher
   runTest "StoreSearch" () checkBool testStoreSearch
+  runTest "Cmd" (MkData SString _ []) interactiveTest testCmd
 

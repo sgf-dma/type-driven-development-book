@@ -4,6 +4,9 @@ import Data.String
 import Data.Fin
 import Data.Vect
 
+export infixr 9 *
+export infixr 9 .*
+
 -- Conversion of Nat to Fin without Maybe. Version with pattern matching.
 export
 total natToFin2 : (m : Nat) -> (n : Nat) -> Fin (maximum (S m) n)
@@ -58,10 +61,23 @@ closeParen parse input = do
 
 -- Parse parenthesis around expression parsed by another parser 'parse'.
 export
-parseParens : (parse : String -> Maybe (a, String)) -> (input : String) -> Maybe (a, String)
+parseParens : (parse : String -> Maybe (a, String))
+            -> (input : String) -> Maybe (a, String)
 parseParens parse input =
+  -- I can't `strM (ltrim input)`, because `ltrim` is implemented in terms of
+  -- `asList`, which, in turn, in terms of `strM` and.. well, this won't
+  -- typecheck for some reason.
   let input' = ltrim input
   in  case strM input' of
            StrCons '(' rest => closeParen parse rest
-           _ => parse input
+           _ => Nothing
+
+-- Composition of dependent functions.
+export
+(*) :  {0 b : a -> Type} -> ({0 x : a} -> b x -> c) -> ((x : a) -> b x) -> a -> c
+(*) g f y = g (f y)
+
+export
+(.*) : forall b, c. ({0 x : a} -> b x -> c x) -> ((x : a) -> b x) -> (y : a) -> c y
+(.*) g f y = g (f y)
 
