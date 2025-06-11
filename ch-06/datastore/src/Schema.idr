@@ -14,12 +14,14 @@ export infixr 5 .+.
 public export
 data Schema = SString
             | SInt
+            | SChar
             | (.+.) Schema Schema
 
 export
 displaySchema : (parens : Bool) -> Schema -> String
 displaySchema _ SInt = "Int"
 displaySchema _ SString = "String"
+displaySchema _ SChar = "Char"
 displaySchema parens ((.+.) s1 s2) =
   -- Show parens around both sides of .+. . It's easy to read.
   showParens parens (displaySchema True s1 ++ " " ++ displaySchema True s2)
@@ -44,6 +46,7 @@ parseSchemaPrefix input =
       case span (\c => c /= ' ' && c /= '(' && c /= ')') (ltrim input) of
            ("String", rest) => pure (SString, rest)
            ("Int", rest) => pure (SInt, rest)
+           ("Char", rest) => pure (SChar, rest)
            ("", rest) => case strM rest of
                 -- I may handle spaces explicitly or i may just skip them as
                 -- "leading spaces" with `ltrim`, as i did above.
@@ -55,8 +58,9 @@ parseSchemaPrefix input =
 
 public export
 TypeSchema : Type -> Maybe Schema
-TypeSchema Int = Just SInt
 TypeSchema String = Just SString
+TypeSchema Int = Just SInt
+TypeSchema Char = Just SChar
 TypeSchema (a, b) = (.+.) <$> TypeSchema a <*> TypeSchema b
 TypeSchema _ = Nothing
 
@@ -64,12 +68,14 @@ public export
 SchemaType : Schema -> Type
 SchemaType SString = String
 SchemaType SInt = Int
+SchemaType SChar = Char
 SchemaType (a .+. b) = (SchemaType a, SchemaType b)
 
 export
 display : {scm : Schema} -> SchemaType scm -> String
-display {scm = SInt} x = show x
 display {scm = SString} x = show x
+display {scm = SInt} x = show x
+display {scm = SChar} x = show x
 display {scm = (.+.) a b} (x, y) = "(" ++ display x ++ ", " ++ display y ++ ")"
 
 -- Parse value according to Schema. Parts of Schema, which require braces,
@@ -97,6 +103,14 @@ parsePrefix _ SString input =
             (quoted, '"' :: rest) => Just (pack quoted, pack rest)
             _ => Nothing
     getQuoted _ = Nothing
+parsePrefix _ SChar input =
+    getQuoted input <|> parseParens (parsePrefix False SChar) input
+  where
+    getQuoted : String -> Maybe (Char, String)
+    getQuoted input =
+      case strUncons1 3 (ltrim input) of
+           Just (['\'', c, '\''], rest) => Just (c, rest)
+           _ => Nothing
 parsePrefix parens ((.+.) a b) input =
   let m = \inp => flip applyKleisli inp $
                   parse True a
@@ -121,6 +135,7 @@ parsePrefix' SString input =
                                   StrCons _ rest => Just (val, rest)
                                   _  => Nothing
        _ => Nothing
+parsePrefix' SChar input = ?notImplemented
 parsePrefix' ((.+.) a b) input = do
   (left, rr) <- parsePrefix' a input
   case span (== ' ') rr of
@@ -193,6 +208,7 @@ allSubtrees2' : (scm : Schema) -> {n : Nat} -> Vect (maximum (S (schemaHeight sc
 export
 Eq Schema where
   SInt == SInt = True
+  SChar == SChar = True
   SString == SString = True
   (l1 .+. r1) == (l2 .+. r2) = (l1 == l2) && (r1 == r2)
   _ == _ = False
@@ -206,6 +222,7 @@ data EqSchema : Schema -> Schema -> Type where
 export
 total maybeEqualSchema : (scm1 : Schema) -> (scm2 : Schema) -> Maybe (EqSchema scm1 scm2)
 maybeEqualSchema SInt SInt = Just (SameSchema SInt)
+maybeEqualSchema SChar SChar = Just (SameSchema SChar)
 maybeEqualSchema SString SString = Just (SameSchema SString)
 maybeEqualSchema (l1 .+. r1) (l2 .+. r2) = do
   (SameSchema l) <- maybeEqualSchema l1 l2
@@ -380,6 +397,7 @@ findSubtrees (sl .+. sr) scm2 height =
     -- Return subtree schema as a subtree of itself, if scm1 is equal to scm2.
     maybeJustSubtree : (scm1 : Schema) -> (scm2 : Schema) -> Maybe (SchemaSubtree scm1 scm2)
     maybeJustSubtree SInt SInt = Just (JustSchema SInt)
+    maybeJustSubtree SChar SChar = Just (JustSchema SChar)
     maybeJustSubtree SString SString = Just (JustSchema SString)
     maybeJustSubtree (l1 .+. r1) (l2 .+. r2) = do
       (JustSchema l) <- maybeJustSubtree l1 l2 | _ => Nothing
@@ -438,6 +456,7 @@ buildMatcher
       -> List (scm' : Schema ** SchemaType scm' -> SchemaType scm' -> Bool)
       -> SchemaType scm -> Bool
 buildMatcher SInt x funcs = maybe (== x) ($ x) (findCmp SInt funcs)
+buildMatcher SChar x funcs = maybe (== x) ($ x) (findCmp SChar funcs)
 buildMatcher SString str funcs = maybe (isInfixOf str) ($ str) (findCmp SString funcs)
 buildMatcher scm@(l .+. r) (lval, rval) funcs =
   maybe rec ($ (lval, rval)) (findCmp scm funcs)

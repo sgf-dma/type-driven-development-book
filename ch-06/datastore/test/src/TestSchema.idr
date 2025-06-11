@@ -14,9 +14,9 @@ testSchemaDisplay =
   [ matchSchema SInt
   , matchSchema (SInt .+. SString)
   , matchSchema ((SInt .+. SString) .+. SString)
-  , matchSchema (SInt .+. (SString .+. SInt))
+  , matchSchema (SInt .+. (SString .+. SChar))
   , matchSchema ((SInt .+. SString) .+. (SString .+. SInt))
-  , matchSchema (((SInt .+. SString) .+. SInt) .+. (SString .+. (SString .+. SInt)))
+  , matchSchema (((SInt .+. SString) .+. SInt) .+. (SChar .+. (SString .+. SInt)))
   ]
   where
     matchSchema : Schema -> Bool
@@ -52,8 +52,8 @@ testSchemaParse =
   , parseSchemaPrefix "  ( (  (Int)  )  ((  String) ))(Test)" == Just (SInt .+. SString, "(Test)")
 
   -- 14-
-  , parseSchemaPrefix "((Int  String) Int) (String String Int)"
-      == Just (((SInt .+. SString) .+. SInt) .+. (SString .+. (SString .+. SInt)), "")
+  , parseSchemaPrefix "((Int  String) Char) (String Char Int)"
+      == Just (((SInt .+. SString) .+. SChar) .+. (SString .+. (SChar .+. SInt)), "")
   ]
 
 export
@@ -72,14 +72,14 @@ testSchemaValue =
   , parsePrefix False (SInt .+. SString) "  2  ( (\"a b c\" ))  " == Just ((2, "a b c"), "  ")
   , parsePrefix True ((SInt .+. SString) .+. SString) " ( ( 2   \"a b c\")  \" d \")"
       == Just (((2, "a b c"), " d "), "")
-  , parsePrefix False (SInt .+. (SString .+. SString)) "  2   (\"a b c\")  \" d \""
-      == Just ((2, ("a b c", " d ")), "")
+  , parsePrefix False (SInt .+. (SString .+. SChar)) "  2   (\"a b c\")  'd'"
+      == Just ((2, ("a b c", 'd')), "")
   , parsePrefix False ((SInt .+. SString) .+. (SString .+. SInt)) "  ((2   \"a b c\")  ((\" d \" 44) )) 55"
       == Just (((2, "a b c"), (" d ", 44)), " 55")
 
   -- 12-
-  , parsePrefix False (((SInt .+. SString) .+. SInt) .+. (SString .+. (SString .+. SInt))) "((  (2 \" a \") 3) ) (\"b\"   (\"c  \")  ( (4)))  "
-      == Just ((((2, " a "), 3), ("b", ("c  ", 4))), "  ")
+  , parsePrefix False (((SInt .+. SString) .+. SChar) .+. (SString .+. (SChar .+. SInt))) "((  (2 \" a \") 'x') ) (\"b\"   ('c')  ( (4)))  "
+      == Just ((((2, " a "), 'x'), ("b", ('c', 4))), "  ")
   ]
 
 tScm1 : Schema

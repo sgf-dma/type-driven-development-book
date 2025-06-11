@@ -88,9 +88,12 @@ export
 getEntry : Integer -> (store : DataStore) -> Maybe (SchemaType (schema store))
 getEntry pos store = (\i => index i (items store)) <$> integerToFin pos (size store)
 
-exStore : DataStore
-exStore = MkData (((SInt .+. SString) .+. SInt)) 3
-            [ ((1, "abc"), 2)
-            , ((1, "abc"), 3)
-            , ((4, "xyz"), 2)
-            ]
+export
+getAllEntries : (store : DataStore) -> List (Nat, SchemaType (schema store))
+getAllEntries store = foldr go (const []) (items store) 0
+  where
+    go : (x : SchemaType (schema store))
+       -> (acc : Nat -> List (Nat, SchemaType (schema store)))
+       -> (i : Nat) -> List (Nat, SchemaType (schema store))
+    go x acc i = (i, x) :: acc (i + 1)
+

@@ -50,3 +50,6 @@ getEntry2 pos store =
        Nothing => Nothing
        Just idx => Just (index idx (items store))
 
+export
+getAllEntries : DataStore2 scm -> List (Nat, SchemaType scm)
+getAllEntries = ?y1
