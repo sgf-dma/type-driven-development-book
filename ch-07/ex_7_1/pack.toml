@@ -1,0 +1,10 @@
+[custom.all.ex_7_1]
+type = "local"
+path = "."
+ipkg = "ex_7_1.ipkg"
+test = "test/test.ipkg"
+
+[custom.all.ex_7_1-test]
+type = "local"
+path = "test"
+ipkg = "test.ipkg"
