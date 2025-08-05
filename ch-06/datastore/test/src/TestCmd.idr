@@ -13,7 +13,7 @@ export
 testCmd : List (String, String)
 testCmd =
   [ ("schema Int (Int String)", "Updated to schema (Int (Int String))")
-  , ("add 3", "Invalid command\nValid commands are 'schema', 'add', 'get', 'size', 'search', 'quit'")
+  , ("add 3", "Error: Failed to parse new value for schema (Int (Int String))")
 
   -- 2-5
   , ("add (1 (2 \"abc\"))", "ID 0")
