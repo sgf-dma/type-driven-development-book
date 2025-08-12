@@ -87,28 +87,45 @@ test1 = [1, 2, 3, 4]
 test2 : Vect (2 + 2) Int
 test2 = test1
 
-zeroRight : {y : Nat} -> y = y + 0
-zeroRight {y = Z} = Refl {a = Nat} {x = Z}
---zeroRight {y = S k} = cong S (zeroRight {y = k})
-zeroRight {y = S k} = cong S zeroRight
+addZero : {y : Nat} -> y + 0 = y
+addZero {y = Z} = Refl {a = Nat} {x = Z}
+--addZero {y = S k} = cong S (addZero {y = k})
+addZero {y = S k} = cong S addZero
 
-zeroRight' : {y : Nat} -> y + 0 = y
-zeroRight' {y = Z} = Refl
-zeroRight' {y = S k} = cong S zeroRight'
+eqComm : a = b -> b = a
+eqComm Refl = Refl
 
-plusAssoc : (x, y, z : Nat) -> x + (y + z) = (x + y) + z
+-- By induction.
+addSucc : {x, y: Nat} -> plus x (S y) = S (plus x y)
+addSucc {x = Z} = Refl
+--addSucc {x = S k} = cong S (addSucc {x = k})
+addSucc {x = S k} = cong S addSucc
 
-gg : {k, t : Nat} -> k + (S t) = k + (t + 1)
-gg {k = Z} = rewrite plusCommutative t 1 in Refl
-gg {k = S p} = cong S gg
-
-ff : {k, t : Nat} -> k + (S t) = t + (S k)
-ff = rewrite plusAssociative t 1 k in
-     rewrite plusCommutative (t + 1) k in gg
-
+-- By induction over both args.
 plusComm : {x, y : Nat} -> x + y = y + x
-plusComm {x = Z} {y = y} = zeroRight
-plusComm {x = S k} {y = Z} = cong S zeroRight'
-plusComm {x = S k} {y = S t} = cong S ff
-  --rewrite plusAssoc k t 1 in ?x5
+plusComm {x = Z} {y = y} = eqComm addZero
+plusComm {x = S k} {y = Z} = cong S addZero
+plusComm {x = S k} {y = S t} =
+  rewrite (addSucc {x = k} {y = t}) in
+  rewrite (addSucc {x = t} {y = k}) in
+  rewrite (cong S (plusComm {x = k} {y = t}))
+  in cong S Refl
+
+-- In fact, this does not needed, because this follows from 'plus' definition.
+succAdd : {x, y : Nat} -> plus (S x) y = S (plus x y)
+succAdd {x = Z} = Refl
+succAdd {x = S k} = cong S (succAdd {x = k})
+--succAdd {x = S k} = cong S succAdd
+
+-- Proper proof, by induction over one argument only.
+plusComm' : {x, y : Nat} -> x + y = y + x
+plusComm' {x = Z} = eqComm addZero
+plusComm' {x = S k} {y = y} =
+  rewrite (addSucc {x = y} {y = k}) in
+  rewrite (plusComm' {x = k} {y = y})
+  in Refl
+
+plusAssoc : {x, y, z : Nat} -> x + (y + z) = (x + y) + z
+plusAssoc {x = Z} = Refl
+plusAssoc {x = S k} = cong S plusAssoc
 
