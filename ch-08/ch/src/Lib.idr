@@ -92,8 +92,8 @@ addZero {y = Z} = Refl {a = Nat} {x = Z}
 --addZero {y = S k} = cong S (addZero {y = k})
 addZero {y = S k} = cong S addZero
 
-eqComm : a = b -> b = a
-eqComm Refl = Refl
+symm : a = b -> b = a
+symm Refl = Refl
 
 -- By induction.
 addSucc : {x, y: Nat} -> plus x (S y) = S (plus x y)
@@ -103,7 +103,7 @@ addSucc {x = S k} = cong S addSucc
 
 -- By induction over both args.
 plusComm : {x, y : Nat} -> x + y = y + x
-plusComm {x = Z} {y = y} = eqComm addZero
+plusComm {x = Z} {y = y} = symm addZero
 plusComm {x = S k} {y = Z} = cong S addZero
 plusComm {x = S k} {y = S t} =
   rewrite (addSucc {x = k} {y = t}) in
@@ -119,7 +119,7 @@ succAdd {x = S k} = cong S (succAdd {x = k})
 
 -- Proper proof, by induction over one argument only.
 plusComm' : {x, y : Nat} -> x + y = y + x
-plusComm' {x = Z} = eqComm addZero
+plusComm' {x = Z} = symm addZero
 plusComm' {x = S k} {y = y} =
   rewrite (addSucc {x = y} {y = k}) in
   rewrite (plusComm' {x = k} {y = y})
@@ -128,4 +128,29 @@ plusComm' {x = S k} {y = y} =
 plusAssoc : {x, y, z : Nat} -> x + (y + z) = (x + y) + z
 plusAssoc {x = Z} = Refl
 plusAssoc {x = S k} = cong S plusAssoc
+
+myAppend : Vect n a -> Vect m a -> Vect (n + m) a
+myAppend Nil ys = ys
+myAppend (x :: xs) ys = x :: myAppend xs ys
+
+myAppend' : Vect n a -> Vect m a -> Vect (n + m) a
+myAppend' {n = n} xs Nil = rewrite addZero {y = n} in xs
+myAppend' {n = n} xs {m = S k} (y :: ys) =
+  rewrite addSucc {x = n} {y = k}
+  in myAppend' (xs `snoc` y) ys
+
+myAppend'2 : Vect n a -> Vect m a -> Vect (m + n) a
+myAppend'2 xs Nil = xs
+myAppend'2 {n = n} xs {m = S k} (y :: ys) =
+  rewrite symm (addSucc {x = k} {y = n})
+  in myAppend'2 (xs `snoc` y) ys
+
+myAppend'3 : Vect n a -> Vect m a -> Vect (m + n) a
+--myAppend'3 Nil {m = m} xs = rewrite addZero {y = m} in xs
+myAppend'3 Nil {m = m} xs = rewrite plusZeroRightNeutral m in xs
+myAppend'3 {n = S k} (x :: xs) {m = m} ys =
+  let z = x :: myAppend'3 xs ys
+  --in  rewrite addSucc {x = m} {y = k}
+  in  rewrite sym (plusSuccRightSucc m k)
+  in  z
 
