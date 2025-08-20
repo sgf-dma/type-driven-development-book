@@ -2,16 +2,6 @@ module Lib
 
 import Data.Vect
 
-{-
-reverseV : Vect l a -> Vect l a
-reverseV Nil = Nil
-reverseV (x :: xs) = go [] (x :: xs)
-
-go : Vect m a -> Vect n a -> Vect (m + n) a
-go z Nil = z
-go z (x :: xs) = let y = go (x :: z) xs in ?w1
--}
-
 myExactLength : (len : Nat) -> (input : Vect m a) -> Maybe (Vect len a)
 myExactLength Z Nil = Just Nil
 myExactLength Z _ = Nothing
@@ -50,20 +40,6 @@ myCong : {t : Type} -> {u : Type} -> {a : t} -> {b : t} -> (f : t -> u) -> (_ : 
 --myCong {a = a} f Refl = Refl {a = u} {x = f a}
 myCong {a = a} f Refl = Refl
 
-zeroPrf : (n : Nat) -> n = 0 + n
-zeroPrf n = Refl
-
-zeroPrf2 : (n : Nat) -> n = plus n 0
---zeroPrf2 Z = Refl
---zeroPrf2 (S k) = cong S (zeroPrf2 k)
-
-goRev : {m : Nat} -> Vect m a -> {l : Nat} -> Vect l a -> Vect (plus m l) a
-goRev Nil ys = ys
-goRev {m = m} xs Nil = ?w4
---  case zeroPrf2 m of
---       Refl => ?w4
-goRev (x :: xs) (y :: ys) = ?w3
-
 mySnoc : Vect n a -> a -> Vect (S n) a
 mySnoc Nil y = [y]
 mySnoc (x :: xs) y = x :: mySnoc xs y
@@ -71,11 +47,6 @@ mySnoc (x :: xs) y = x :: mySnoc xs y
 myReverse : {n : Nat} -> Vect n a -> Vect n a
 myReverse Nil = Nil
 --myReverse (x :: xs) = myReverse xs `mySnoc` x
---myReverse xs@(_ :: _) = goRev [] xs
-{-myReverse {n = S k} (x :: xs) =
-  let result = myReverse xs ++ [x]
-  in rewrite plusCommutative 1 k in result
-  -}
 myReverse {n = S k} (x :: xs) = reverseProof (myReverse xs ++ [x])
   where
     reverseProof : Vect (plus t 1) a -> Vect (S t) a
