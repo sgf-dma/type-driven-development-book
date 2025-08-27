@@ -1,5 +1,6 @@
 module Lib
 
+import Decidable.Equality
 import Data.Vect
 
 myExactLength : (len : Nat) -> (input : Vect m a) -> Maybe (Vect len a)
@@ -125,3 +126,42 @@ myAppend'3 {n = S k} (x :: xs) {m = m} ys =
   in  rewrite sym (plusSuccRightSucc m k)
   in  z
 
+succ_inj : S x = S y -> x = y
+succ_inj Refl = Refl
+
+zero_ne_succ : {x : Nat} -> 0 = S x -> Void
+zero_ne_succ Refl impossible
+
+twoPlusTwoNotFive : 2 + 2 = (the Nat 5) -> Void
+twoPlusTwoNotFive Refl impossible
+{-
+  let r = succ_inj (succ_inj (succ_inj (succ_inj h)))
+  in  zero_ne_succ r
+  -}
+
+checkEqNat3 : (num1 : Nat) -> (num2 : Nat) -> Dec (num1 = num2)
+checkEqNat3 Z Z = Yes Refl
+checkEqNat3 Z (S t) = No zero_ne_succ
+--checkEqNat3 (S n) Z = No (symmV zero_ne_succ)
+checkEqNat3 (S n) Z = No (zero_ne_succ . symm)
+  where
+    symmV : (a = b -> Void) -> b = a -> Void
+    --symmV h prf = h (symm prf)
+    symmV h = h . symm
+checkEqNat3 (S n) (S t) =
+  case checkEqNat3 n t of
+       --Yes Refl => Yes Refl
+       Yes prf => rewrite prf in Yes Refl
+       No contra => No (succ_ne_succ' contra)
+  where
+    succ_ne_succ' : (n = t -> Void) -> S n = S t -> Void
+    succ_ne_succ' h prf = h (succ_inj prf)
+
+succ_ne_succ : (n = t -> Void) -> S n = S t -> Void
+succ_ne_succ contra Refl = contra Refl
+
+myExactLength3 : (len : Nat) -> {m : Nat} -> Vect m a -> Maybe (Vect len a)
+myExactLength3 len {m = m} xs = case decEq len m of
+                                     Yes prf => rewrite prf in Just xs
+                                     --Yes Refl => Just xs
+                                     No contra => Nothing
