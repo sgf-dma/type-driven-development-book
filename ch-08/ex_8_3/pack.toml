@@ -1,0 +1,10 @@
+[custom.all.ex_8_3]
+type = "local"
+path = "."
+ipkg = "ex_8_3.ipkg"
+test = "test/test.ipkg"
+
+[custom.all.ex_8_3-test]
+type = "local"
+path = "test"
+ipkg = "test.ipkg"
