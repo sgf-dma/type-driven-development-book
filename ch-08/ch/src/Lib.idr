@@ -165,3 +165,15 @@ myExactLength3 len {m = m} xs = case decEq len m of
                                      Yes prf => rewrite prf in Just xs
                                      --Yes Refl => Just xs
                                      No contra => Nothing
+
+-- For comparison with above, here is version with '==' instead of 'decEq'.
+-- Essentially, this does not differ much. The only thing that this version
+-- with 'Bool' misses is the way, which i may use to rewrite type of result: i
+-- need `Vect len a`, but i only have `Vect m a`. `decEq` provides me a proof
+-- `prf`, which i may use to substitute `m` instead of `len` in the result
+-- type and complete defition. But `Bool` does not provide such a tool,
+-- therefore i can't complete defition.
+myExactLength3' : (len : Nat) -> {m : Nat} -> Vect m a -> Maybe (Vect len a)
+myExactLength3' len {m = m} xs = case len == m of
+                                     True => ?z2
+                                     False => Nothing
