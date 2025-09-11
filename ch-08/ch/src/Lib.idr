@@ -132,8 +132,8 @@ succ_inj Refl = Refl
 zero_ne_succ : {x : Nat} -> 0 = S x -> Void
 zero_ne_succ Refl impossible
 
-twoPlusTwoNotFive : 2 + 2 = (the Nat 5) -> Void
-twoPlusTwoNotFive Refl impossible
+twoplustwo_not_five : 2 + 2 = (the Nat 5) -> Void
+twoplustwo_not_five Refl impossible
 {-
   let r = succ_inj (succ_inj (succ_inj (succ_inj h)))
   in  zero_ne_succ r
