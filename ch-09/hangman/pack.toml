@@ -1,0 +1,10 @@
+[custom.all.hangman]
+type = "local"
+path = "."
+ipkg = "hangman.ipkg"
+test = "test/test.ipkg"
+
+[custom.all.hangman-test]
+type = "local"
+path = "test"
+ipkg = "test.ipkg"
