@@ -4,11 +4,24 @@ import Decidable.Equality
 import Data.String
 import Data.Vect
 import Data.Vect.Elem
+import Data.List.Elem
+
+import Vect
+import List
+
+-- I want to use only allowed characters anywhere in the game. E.g. for
+-- avoiding creating WordState with lower case letters and then trying to
+-- guess it using upper case letters (because readGuess calls `toUpper`).
+--AllowedChars : Vect _ Char
+AllowedChars = the (Vect _ Char) (fromList (rangeFromTo 'A' 'Z'))
 
 public export
 data WordState : (guesses_remaining : Nat) -> (letters : Nat) -> Type where
   MkWordState : (word : String) ->
                 (missing : Vect letters Char) ->
+                -- FIXME: 'auto' compiles too long for wrong input.
+                {auto allowed : Subset missing AllowedChars} ->
+                {guesses_remaining : Nat} ->
                 WordState guesses_remaining letters
 
 data Finished : Type where
@@ -24,8 +37,9 @@ Show Finished where
             ++ " The word was '" ++ word ++ "'."
             ++ " Remaining guesses " ++ show guesses
 
+-- Now i should also ensure, that input character is in allowed chars list.
 data ValidInput : List Char -> Type where
-  Letter : (c : Char) -> ValidInput [c]
+  Letter : (c : Char) -> {auto allowed : Elem c AllowedChars} -> ValidInput [c]
 
 Uninhabited (ValidInput []) where
   uninhabited (Letter _) impossible
@@ -34,42 +48,49 @@ Uninhabited (ValidInput (_::_::_)) where
 
 isValidInput : (cs : List Char) -> Dec (ValidInput cs)
 isValidInput [] = No uninhabited
-isValidInput [c] = Yes (Letter c)
+isValidInput [c] =
+  case isElem c AllowedChars of
+       Yes _ => Yes (Letter c)
+       No notAllowed => No $ \(Letter _ {allowed = allowed}) => notAllowed allowed
 isValidInput (_::_::_) = No uninhabited
 
 isValidString : (s : String) -> Dec (ValidInput (unpack s))
 isValidString s = isValidInput (unpack s)
 
-readGuess : IO (x ** ValidInput x)
+-- In fact, i don't need 'Dec', because i don't care about 'contra' proof in
+-- readGuess below. I.e. regular 'Maybe' is enough.
+isValidStringM : (s : String) -> Maybe (ValidInput (unpack s))
+isValidStringM s = case isValidString s of
+                         Yes prf => Just prf
+                         No _ => Nothing
+
+-- When adding allowed characters verification, i should not change the type
+-- returned by 'readGuess', because its type is the type, which _caller_ wants
+-- to get, - a list of 'Char's. And therefore predicate (whatever it verifies)
+-- should always check value of that type - 'List Char'. In other words,
+-- regardless of what exactly predicate 'ValidInput' verifies, predicate type
+-- should remain the same: 'List Char -> Type'.
+readGuess : IO (xs ** ValidInput xs)
 readGuess = do
   putStr "Guess: "
   s <- getLine
-  case isValidString (toUpper s) of
-  --case isValidInput (unpack (toUpper s)) of
-       Yes prf => pure (_ ** prf)
-       No contra => do
-         putStrLn "Invalid input, must be single character"
+  case isValidStringM s of
+       Just prf => pure (_ ** prf)
+       Nothing => do
+         putStrLn "Invalid input: guess should be single capital letter."
          readGuess
-
-myIsElem : DecEq a => (x : a) -> (xs : Vect n a) -> Dec (Elem x xs)
-myIsElem x [] = No uninhabited
-myIsElem x (y :: ys) =
-  case decEq x y of
-       Yes prf => rewrite prf in Yes Here
-       No notHere => case myIsElem x ys of
-              Yes later => Yes (There later)
-              No notThere => No $ \e => case e of
-                  Here => notHere Refl
-                  There later => notThere later
 
 processGuess : (letter : Char) ->
                WordState (S guesses) (S letters) ->
                Either (WordState guesses (S letters))
                       (WordState (S guesses) letters)
-processGuess c (MkWordState word missing) =
-  case myIsElem c missing of
-       Yes prf => let r = dropElem missing prf in Right (MkWordState word r)
-       No contr => Left (MkWordState word missing)
+processGuess c (MkWordState word missing {allowed = allowed}) =
+  case isElem c missing of
+       -- I need allowed' to be available to prove, that vector resulting from
+       -- `dropElem` still is subset of AllowedChars.
+       Yes el => let allowed' = dropSubsetElem allowed el
+                 in  Right (MkWordState word (dropElem missing el))
+       No _ => Left (MkWordState word missing)
 
 export
 game : {guesses : Nat} -> {letters : Nat} -> WordState (S guesses) (S letters) -> IO Finished
@@ -77,16 +98,20 @@ game {guesses = guesses} {letters = letters} state = do
   (_ ** Letter c) <- readGuess
   case processGuess c state of
        Left l => do
-         putStrLn ("Wrong! Attempts remaining " ++ show guesses)
+         putStrLn ("Wrong! Mistakes remaining " ++ show guesses)
          case guesses of
               Z => pure (Lost l)
               (S _) => game l
-              {-
-       Right r => case r of
-                       (MkWordState _ []) => pure (Won r)
-                       (MkWordState _ (_::_)) => game r
-                       -}
        Right r => case letters of
                        Z => pure (Won r)
                        (S _) => game r
 
+export
+newWordState : (guesses_remaining : Nat) ->
+               (input : String) ->
+               Maybe (letters : Nat ** WordState guesses_remaining letters)
+newWordState guesses_remaining input =
+  let missing = fromList (uniqueElems (unpack input))
+  in  case isSubset missing AllowedChars of
+           Yes prf => Just (_ ** MkWordState input missing)
+           No _ => Nothing
