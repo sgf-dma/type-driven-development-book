@@ -32,10 +32,10 @@ export
 Show Finished where
   show (Lost {letters = letters} (MkWordState word _)) = "You've lost."
             ++ " The word was '" ++ word ++ "'."
-            ++ " Letters remaining " ++ show letters
+            ++ " Letters remaining " ++ show (S letters)
   show (Won {guesses = guesses} (MkWordState word _)) = "You win! "
             ++ " The word was '" ++ word ++ "'."
-            ++ " Remaining guesses " ++ show guesses
+            ++ " Mistakes remaining " ++ show (S guesses)
 
 -- Now i should also ensure, that input character is in allowed chars list.
 data ValidInput : List Char -> Type where
