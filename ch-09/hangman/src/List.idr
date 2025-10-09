@@ -55,6 +55,7 @@ insertElem {xs = x::xs} e sub =
   let r = insertElem e (reduceSubset sub)
   in  AddElem (subsetElem sub) r
 
+-- See different implementation in Vect.idr.
 append : {xs, ys, zs : List a} -> Subset xs ys -> Subset zs ys -> Subset (xs ++ zs) ys
 append EmptySubset sub2 = sub2
 append (AddElem e sub1) sub2 = AddElem e (append sub1 sub2)
