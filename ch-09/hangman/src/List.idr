@@ -18,6 +18,22 @@ subsetElem : Subset (x::xs) ys -> Elem x ys
 subsetElem (AddElem e _) = e
 subsetElem (ExpandSet sub) = let later = subsetElem sub in There later
 
+expandBoth : Subset xs xs -> Subset (x::xs) (x::xs)
+expandBoth sub = AddElem Here (ExpandSet sub)
+
+subsetOfItself : (xs : List a) -> Subset xs xs
+subsetOfItself [] = EmptySubset
+subsetOfItself (x::xs) = expandBoth (subsetOfItself xs)
+
+addEmpty : (xs : List a) ->  xs ++ [] = xs
+addEmpty [] = Refl
+addEmpty (x::xs) = rewrite (addEmpty xs) in Refl
+
+-- Idris can derive this by itself from (++) definition.
+--consComm : (xs, ys : List a) -> (z::xs) ++ ys = z::(xs ++ ys)
+--consComm [] ys = Refl
+--consComm (x::xs) ys = Refl
+
 export
 reduceSubset :  Subset (x::xs) ys -> Subset xs ys
 reduceSubset (AddElem e sub) = sub
@@ -32,6 +48,24 @@ isSubset (x::xs) ys =
        Yes found => case isSubset xs ys of
                          No notSubset => No $ \sub => notSubset (reduceSubset sub)
                          Yes sub => Yes (AddElem found sub)
+
+insertElem : {xs, zs : List a} -> Elem z ys -> Subset (xs ++ zs) ys -> Subset (xs ++ (z::zs)) ys
+insertElem {xs = []} e sub = AddElem e sub
+insertElem {xs = x::xs} e sub =
+  let r = insertElem e (reduceSubset sub)
+  in  AddElem (subsetElem sub) r
+
+append : {xs, ys, zs : List a} -> Subset xs ys -> Subset zs ys -> Subset (xs ++ zs) ys
+append EmptySubset sub2 = sub2
+append (AddElem e sub1) sub2 = AddElem e (append sub1 sub2)
+append sub1@(ExpandSet _) EmptySubset = rewrite addEmpty xs in sub1
+append (ExpandSet sub1) (AddElem e sub2) {zs = z::zs} =
+  let r = append (ExpandSet sub1) sub2
+  in  insertElem e r
+append (ExpandSet sub1) (ExpandSet sub2) = ExpandSet (append sub1 sub2)
+
+snocElem : {x : a} -> {xs, ys : List a} -> Elem x ys -> Subset xs ys -> Subset (xs `snoc` x) ys
+snocElem e sub = append sub (AddElem e EmptySubset)
 
 export
 -- Proof, that dropping element from a subset preserves Subset relation.
