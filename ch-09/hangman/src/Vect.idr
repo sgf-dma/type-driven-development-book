@@ -2,8 +2,11 @@
 module Vect
 
 import Decidable.Equality
+import Data.Nat
 import Data.Vect
 import Data.Vect.Elem
+
+%default total
 
 public export
 data Subset : Vect n a -> Vect m b -> Type where
@@ -27,9 +30,46 @@ subsetOfItself (x::xs) = expandBoth (subsetOfItself xs)
 vectInj : {xs : Vect n a} -> {ys : Vect m a} -> xs = ys -> (z::xs) = (z::ys)
 vectInj Refl = Refl
 
-addEmpty : {n : Nat} -> (xs : Vect n a) -> xs ++ [] ~=~ xs
+-- This predicate is useless, because i can only use '===' equations in
+-- `rewrite` (or `replace`).
+addEmpty2 : {n : Nat} -> (xs : Vect n a) -> xs ++ [] ~=~ xs
+addEmpty2 [] = Refl
+addEmpty2 {n = S _} (x::xs) = let r = addEmpty2 xs in vectInj {z = x} r
+
+-- Here is a fixed version of the `addEmpty2` .
+addEmpty : {n : Nat} -> (xs : Vect n a) ->
+           (rewrite sym (plusZeroRightNeutral n) in xs ++ []) = xs
 addEmpty [] = Refl
-addEmpty {n = S t} (x::xs) = let r = addEmpty xs in vectInj {z = x} r
+addEmpty {n = S k} (x::xs) =
+  rewrite (addEmpty xs)
+  in rewrite plusZeroRightNeutral k
+  in Refl
+  -- This will also work
+  --rewrite plusZeroRightNeutral k in vectInj {z = x} (addEmpty xs)
+
+vect_induction :
+    (prop : forall n. Vect n a -> Type) ->
+    (prop Nil) ->
+    (forall k. {ys : Vect k a} -> prop ys -> (y : a) -> prop (y::ys)) ->
+    (xs : Vect m a) ->
+    prop xs
+vect_induction prop pNil pRec [] = pNil
+vect_induction prop pNil pRec (x::xs) = pRec (vect_induction prop pNil pRec xs) x
+
+-- Or with replace and explicit induction
+addEmpty3 : {n : Nat} -> (xs : Vect n a) ->
+            --(replace {p = \t => Vect t a} (plusZeroRightNeutral n) (xs ++ []) = xs)
+            (replace (plusZeroRightNeutral n) (xs ++ []) = xs)
+addEmpty3 xs = vect_induction prop Refl propRec xs
+  where
+    prop : forall k. (ys : Vect k a) -> Type
+    prop ys = (replace {p = \t => Vect t a} (plusZeroRightNeutral k) (ys ++ [])) === ys
+    propRec : forall k. {ys : Vect k a} -> prop ys -> (y : a) -> prop (y::ys)
+    propRec rec y =
+      -- Ugh, it seems too difficult to write `p` and replace this `rewrite`
+      -- with `replace`, so leave it as is..
+      rewrite plusZeroRightNeutral k in
+              replace {p = \t => y::t = y::ys} (sym rec) Refl
 
 export
 reduceSubset :  Subset (x::xs) ys -> Subset xs ys
