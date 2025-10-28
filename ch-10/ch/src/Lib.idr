@@ -42,6 +42,21 @@ snocLeftEqConsRight [] z r = Refl
 snocLeftEqConsRight (y::ys') z r =
   rewrite (snocLeftEqConsRight ys' z r) in Refl
 
+total
+splitList : (input : List a) -> SplitList input
+splitList input = splitListHelp input input
+where
+  splitListHelp : List a -> (input : List a) -> SplitList input
+  splitListHelp _ [] = SplitNil
+  splitListHelp _ [x] = SplitOne
+  splitListHelp (_ :: _ :: counter) (item :: items)
+      = case splitListHelp counter items of
+             SplitNil => SplitOne
+             SplitOne {x} => SplitPair [item] [x]
+             SplitPair lefts rights => SplitPair (item :: lefts) rights
+  splitListHelp _ items = SplitPair [] items
+
+total
 splitList' : (xs : List a) -> SplitList xs
 splitList' [] = SplitNil
 splitList' [x] = SplitOne
@@ -68,6 +83,7 @@ snocLen : (x : a) -> (ys : List a) -> S (length ys) = length (ys ++ [x])
 snocLen x [] = Refl
 snocLen x (y::ys') = rewrite (snocLen x ys') in Refl
 
+total
 splitList2 : (xs : List a) -> SplitList2 xs
 splitList2 [] = SplitNil2
 splitList2 [x] = SplitOne2
@@ -93,6 +109,7 @@ data SplitList3 : List a -> Type where
                {auto lenPrf : length l = finToNat lenDiff + length r} ->
                SplitList3 (l ++ r)
 
+total
 splitList3 : (xs : List a) -> SplitList3 xs
 splitList3 [] = SplitNil3
 splitList3 [x] = SplitOne3
@@ -112,10 +129,16 @@ splitList3 (x::xs') =
        SplitPair3 l r {lenDiff = FS (FS k)} impossible
 
 mergeSort : Ord a => List a -> List a
-mergeSort xs with (splitList' xs)
+mergeSort xs with (splitList xs)
   mergeSort [] | SplitNil = []
   mergeSort [x] | SplitOne = [x]
   mergeSort (l ++ r) | SplitPair l r = merge (mergeSort l) (mergeSort r)
+
+mergeSort' : Ord a => List a -> List a
+mergeSort' xs with (splitList' xs)
+  mergeSort' [] | SplitNil = []
+  mergeSort' [x] | SplitOne = [x]
+  mergeSort' (l ++ r) | SplitPair l r = merge (mergeSort' l) (mergeSort' r)
 
 mergeSort3 : Ord a => List a -> List a
 mergeSort3 xs with (splitList3 xs)
