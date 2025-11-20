@@ -14,7 +14,7 @@ f (x::xs') = f (drop 1 (x::xs'))
 
 -- I may use special type to fix this, but..
 data DropList : Nat -> List a -> Type where
-  DropE : DropList n []
+  DropE : DropList (S n) []
   Drop0 : (xs : List a) -> DropList Z xs
   Drop1 : {x : a} -> {xs : List a} -> DropList k xs -> DropList (S k) (x::xs)
 
@@ -28,25 +28,20 @@ total
 f2 : (xs : List Int) -> List Int
 f2 [] = []
 f2 (x::xs') with (dropList 1 (x::xs'))
-  f2 (x::[]) | Drop1 DropE = f2 []
+  f2 (x::[]) | Drop1 DropE impossible
   f2 (x::ys) | Drop1 (Drop0 ys) = f2 ys
 
 -- It stil won't work for any n.
 partial
 f3 : (n : Nat) -> (xs : List a) -> List (List a)
-f3 _ [] = [[]]
+f3 _ [] = []
 f3 Z (x::xs') = [x::xs']
 f3 (S k) (x::xs') with (dropList 1 (x::xs'))
-  f3 (S k) (x::[]) | Drop1 DropE =
-    case f3 k [] of
-         ([]::_) => [[]]
-         (t::_) => t :: f3 (S k) t
-         _ => ?f3undef1
+  f3 (S k) (x::[]) | Drop1 DropE impossible
   f3 (S k) (x::ys) | Drop1 (Drop0 ys) =
     case f3 k ys of
-         ([]::_) => [[]]
+         [] => []
          (t::_) => t :: f3 (S k) t
-         _ => ?f3undef2
 
 -- I may try more complicated type, but..
 data DropNList : Nat -> List a -> Type where
@@ -91,22 +86,57 @@ g (x::xs') {l = S (length xs')} {prf = Refl} =
   let t = g (drop 1 (x::xs')) {l = length xs'}
   in  t
 
-dropLengthLTE : (k : Nat) -> (xs : List a) ->
-        (length (drop k xs)) `LTE` (length xs)
+dropLengthLTE : (k : Nat) -> (xs : List a) -> (length (drop k xs)) `LTE` (length xs)
 dropLengthLTE Z [] = LTEZero
 dropLengthLTE (S t) [] = LTEZero
-dropLengthLTE Z (x::xs') = let r = dropLengthLTE Z xs' in LTESucc r
-dropLengthLTE (S t) (x::xs') =
-  let r = dropLengthLTE t xs'
-  in  lteSuccRight r
+dropLengthLTE Z (x::xs')     = let r = dropLengthLTE Z xs' in LTESucc r
+dropLengthLTE (S t) (x::xs') = let r = dropLengthLTE t xs' in lteSuccRight r
 
--- It's more complex for n, but still works.
+-- It's more complex for values greater, than 1
 total
-g4 : (xs : List a) -> {l : Nat} -> {auto prf : length xs `LTE` l} -> List a
-g4 [] = []
-g4 (x::xs') {l = Z} impossible
-g4 (x::xs') {l = S t} {prf = LTESucc lte} =
-  --let t = g4 (drop 3 (x::xs')) {prf = trans (dropLengthLTE 2 xs') lte}
-  let t = g4 (drop 3 (x::xs')) {prf = transitive (dropLengthLTE 2 xs') lte}
+g3' : (xs : List a) -> {l : Nat} -> {auto prf : length xs `LTE` l} -> List a
+g3' [] = []
+g3' (x::xs') {l = Z} impossible
+g3' (x::xs') {l = S t} {prf = LTESucc lte} =
+  --let t = g3' (drop 3 (x::xs')) {prf = trans (dropLengthLTE 2 xs') lte}
+  let t = g3' (drop 3 (x::xs')) {prf = transitive (dropLengthLTE 2 xs') lte}
   in  t
 
+-- Or i may match on LTE directly.
+total
+g3'2 : (xs : List a) -> {l : Nat} -> {auto prf : length xs `LTE` l} -> List a
+g3'2 [] = []
+g3'2 (x::xs') {prf = LTEZero} impossible
+g3'2 (x::xs') {prf = LTESucc lte} =
+  let t = g3'2 (drop 3 (x::xs')) {prf = transitive (dropLengthLTE 2 xs') lte}
+  in  t
+
+-- Or with arbitrary n
+total
+g3'3 : (n : Nat) -> (xs : List a) -> {l : Nat} -> {auto prf : length xs `LTE` l} -> List a
+g3'3 n [] = []
+g3'3 n (x::xs') {prf = LTEZero} impossible
+g3'3 Z (x::xs') {prf = LTESucc lte} = (x::xs')
+g3'3 (S k) (x::xs') {prf = LTESucc lte} =
+  let t = g3'3 (S k) (drop (S k) (x::xs')) {prf = transitive (dropLengthLTE k xs') lte}
+  in  t
+
+-- And, finally, here is total implementation of f3.
+total
+g3 : (n : Nat) -> (xs : List a) -> {l : Nat} -> {auto prf : length xs `LTE` l} -> List (List a)
+g3 n [] = [[]]
+g3 n (x::xs') {prf = LTEZero} impossible
+g3 Z (x::xs') {prf = LTESucc lte} = [x::xs']
+g3 (S k) (x::xs') {prf = LTESucc lte} =
+    case ys of
+         [] => []
+         _ => ys :: g3 (S k) ys {prf = transitive (dropLengthLTE k xs') lte}
+  where
+    ys = drop (S k) (x::xs')
+{-
+g3 (S k) (x::xs') {prf = LTESucc lte} =
+  let ys = drop (S k) (x::xs')
+  in case ys of
+         [] => []
+         _ => ys :: g3 (S k) ys {prf = transitive (dropLengthLTE k xs') lte}
+    -}
