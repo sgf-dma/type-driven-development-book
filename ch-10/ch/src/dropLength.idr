@@ -97,7 +97,7 @@ total
 g3' : (xs : List a) -> {l : Nat} -> {auto prf : length xs `LTE` l} -> List a
 g3' [] = []
 g3' (x::xs') {l = Z} impossible
-g3' (x::xs') {l = S t} {prf = LTESucc lte} =
+g3' (x::xs') {l = S k} {prf = LTESucc lte} =
   --let t = g3' (drop 3 (x::xs')) {prf = trans (dropLengthLTE 2 xs') lte}
   let t = g3' (drop 3 (x::xs')) {prf = transitive (dropLengthLTE 2 xs') lte}
   in  t
@@ -128,15 +128,77 @@ g3 n [] = [[]]
 g3 n (x::xs') {prf = LTEZero} impossible
 g3 Z (x::xs') {prf = LTESucc lte} = [x::xs']
 g3 (S k) (x::xs') {prf = LTESucc lte} =
-    case ys of
-         [] => []
-         _ => ys :: g3 (S k) ys {prf = transitive (dropLengthLTE k xs') lte}
-  where
-    ys = drop (S k) (x::xs')
-{-
-g3 (S k) (x::xs') {prf = LTESucc lte} =
-  let ys = drop (S k) (x::xs')
+  let ys : ?
+      ys = drop (S k) (x::xs')
   in case ys of
          [] => []
-         _ => ys :: g3 (S k) ys {prf = transitive (dropLengthLTE k xs') lte}
-    -}
+         _  => ys :: g3 (S k) ys {prf = transitive (dropLengthLTE k xs') lte}
+
+-- Total implementation of f4 is slightly more difficult..
+
+lteSelf : {n : Nat} -> LTE n n
+lteSelf {n = Z} = LTEZero
+lteSelf {n = S k} = LTESucc lteSelf
+
+-- I can't prove this for existing 'splitAt' definition, because 'let' clause
+-- in 'splitAt' definition doesn't reduce.
+splitAtSndLength' : (n : Nat) -> {x : a} -> (xs : List a) ->
+                    length (snd (splitAt (S n) (x::xs))) `LTE` length xs
+splitAtSndLength' Z [] = LTEZero
+splitAtSndLength' Z (x::xs') = LTESucc lteSelf
+splitAtSndLength' (S k) [] = LTEZero
+splitAtSndLength' (S k) (y::xs') =
+  let r = lteSuccRight (splitAtSndLength' k {x = y} {xs = xs'})
+  in  ?failed1
+
+-- But if i define 'splitAt' without pattern match in 'let', ..
+mySplitAt : Nat -> List a -> (List a, List a)
+mySplitAt 0 xs = ([], xs)
+mySplitAt (S k) [] = ([], [])
+mySplitAt (S k) (x :: xs) = let z = mySplitAt k xs in (x :: fst z, snd z)
+
+-- (this is not used, but anyway)
+splitAtSuccSndEq : (n : Nat) -> (x : a) -> (xs : List a) ->
+                   snd (mySplitAt (S n) (x::xs)) = snd (mySplitAt n xs)
+splitAtSuccSndEq Z _ _ = Refl
+splitAtSuccSndEq (S k) _ _ = Refl
+
+-- ..i can finally prove 'splitAtSndLength'.
+splitAtSndLength : (n : Nat) -> {x : a} -> (xs : List a) ->
+                   length (snd (mySplitAt (S n) (x::xs))) `LTE` length xs
+splitAtSndLength Z [] = LTEZero
+splitAtSndLength Z (_::_) = LTESucc lteSelf
+splitAtSndLength (S _) [] = LTEZero
+splitAtSndLength (S k) (y::xs') =
+  let r = lteSuccRight (splitAtSndLength k {x = y} {xs = xs'})
+  -- Note the result type:
+  --        a4 : LTE (length (snd (mySplitAt k xs'))) (S (length xs'))
+  -- this is exactly the type of `splitAtSndLength2`, when (xs = x::xs'). So,
+  -- these two functions are indeed the same.
+  --in  rewrite splitAtSuccSndEq k y xs' in ?a4 -- r
+  in r
+
+-- But with my `splitAt` definition much simpler proof will suffice!
+splitAtSndLength2 : (n : Nat) -> (xs : List a) ->
+                    length (snd (mySplitAt n xs)) `LTE` length xs
+splitAtSndLength2 Z [] = LTEZero
+splitAtSndLength2 Z (x::xs') = LTESucc lteSelf
+splitAtSndLength2 (S k) [] = LTEZero
+splitAtSndLength2 (S k) (x::xs') = let r = splitAtSndLength2 k xs' in lteSuccRight r
+
+total
+g4 : (n : Nat) -> (xs : List a) -> {l : Nat} -> {auto prf : length xs `LTE` l} -> List (List a)
+g4 Z xs = [xs]
+g4 (S t) [] = [[]]
+g4 (S t) {l = S n} (x::xs') {prf = LTESucc lte} =
+  let z : ?
+      z = mySplitAt (S t) (x::xs')
+      -- I can use this proof..
+      prf = transitive (splitAtSndLength t {x = x} {xs = xs'}) lte
+      r = g4 (S t) {l = n} {prf = prf} (snd z)
+      -- but with my `splitAt` definition much simpler proof will also be enough
+      prf2 = transitive (splitAtSndLength2 t {xs = xs'}) lte
+      r2 = g4 (S t) {l = n} {prf = prf2} (snd z)
+  in  case r2 of
+           [[]] => [fst z]
+           rs => fst z :: rs
