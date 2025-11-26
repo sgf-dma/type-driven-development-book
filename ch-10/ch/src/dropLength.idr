@@ -140,16 +140,26 @@ lteSelf : {n : Nat} -> LTE n n
 lteSelf {n = Z} = LTEZero
 lteSelf {n = S k} = LTESucc lteSelf
 
--- I can't prove this for existing 'splitAt' definition, because 'let' clause
--- in 'splitAt' definition doesn't reduce.
+-- I can't prove neither of these two with existing 'splitAt' definition,
+-- because 'let' clause in 'splitAt' definition doesn't reduce.
+-- ADDED LATER: `let` in `Data.List.splitAt` definition reduces to `case` and
+-- to reduce it further i need to pattern-match on the same value as used in `case`.
+splitAtSuccSndEq' : (n : Nat) -> (x : a) -> (xs : List a) ->
+                    snd (splitAt (S n) (x::xs)) = snd (splitAt n xs)
+splitAtSuccSndEq' Z _ xs = Refl
+splitAtSuccSndEq' (S k) _ xs with (splitAt (S k) xs)
+  _ | (tk, dr) = Refl
+
+-- ADDED LATER: And now, using `splitAtSuccSndEq'` helper i can finally prove
+-- this as well!
 splitAtSndLength' : (n : Nat) -> {x : a} -> (xs : List a) ->
                     length (snd (splitAt (S n) (x::xs))) `LTE` length xs
 splitAtSndLength' Z [] = LTEZero
 splitAtSndLength' Z (x::xs') = LTESucc lteSelf
 splitAtSndLength' (S k) [] = LTEZero
 splitAtSndLength' (S k) (y::xs') =
-  let r = lteSuccRight (splitAtSndLength' k {x = y} {xs = xs'})
-  in  ?failed1
+      let r = lteSuccRight (splitAtSndLength' k {x = y} {xs = xs'})
+      in  rewrite splitAtSuccSndEq' (S k) x (y::xs') in r
 
 -- But if i define 'splitAt' without pattern match in 'let', ..
 mySplitAt : Nat -> List a -> (List a, List a)
@@ -160,8 +170,8 @@ mySplitAt (S k) (x :: xs) = let z = mySplitAt k xs in (x :: fst z, snd z)
 -- (this is not used, but anyway)
 splitAtSuccSndEq : (n : Nat) -> (x : a) -> (xs : List a) ->
                    snd (mySplitAt (S n) (x::xs)) = snd (mySplitAt n xs)
-splitAtSuccSndEq Z _ _ = Refl
-splitAtSuccSndEq (S k) _ _ = Refl
+splitAtSuccSndEq Z _ xs = Refl
+splitAtSuccSndEq (S k) _ xs = Refl
 
 -- ..i can finally prove 'splitAtSndLength'.
 splitAtSndLength : (n : Nat) -> {x : a} -> (xs : List a) ->
@@ -194,11 +204,35 @@ g4 (S t) {l = S n} (x::xs') {prf = LTESucc lte} =
   let z : ?
       z = mySplitAt (S t) (x::xs')
       -- I can use this proof..
-      prf = transitive (splitAtSndLength t {x = x} {xs = xs'}) lte
+      prf = transitive (splitAtSndLength t {x = x} xs') lte
       r = g4 (S t) {l = n} {prf = prf} (snd z)
       -- but with my `splitAt` definition much simpler proof will also be enough
-      prf2 = transitive (splitAtSndLength2 t {xs = xs'}) lte
+      prf2 = transitive (splitAtSndLength2 t xs') lte
       r2 = g4 (S t) {l = n} {prf = prf2} (snd z)
   in  case r2 of
            [[]] => [fst z]
            rs => fst z :: rs
+
+-- ADDED LATER: And here is the same for Data.List.splitAt .
+splitAtSndLength2' : (n : Nat) -> (xs : List a) ->
+                     length (snd (splitAt n xs)) `LTE` length xs
+splitAtSndLength2' Z [] = LTEZero
+splitAtSndLength2' Z (x::xs') = LTESucc lteSelf
+splitAtSndLength2' (S k) [] = LTEZero
+splitAtSndLength2' (S k) (x::xs') =
+  let r = splitAtSndLength2' k xs'
+  in  rewrite (splitAtSuccSndEq' k x xs') in lteSuccRight r
+
+total
+g4' : (n : Nat) -> (xs : List a) -> {l : Nat} -> {auto prf : length xs `LTE` l} -> List (List a)
+g4' Z xs = [xs]
+g4' (S t) [] = [[]]
+g4' (S t) {l = S n} (x::xs') {prf = LTESucc lte} =
+  let prf2 = transitive (splitAtSndLength2' t xs') lte
+      r2 = g4' (S t) {l = n} {prf = rewrite splitAtSuccSndEq' t x xs' in prf2} (snd z)
+  in  case r2 of
+           [[]] => [fst z]
+           rs => fst z :: rs
+  where
+    z : (List a, List a)
+    z = splitAt (S t) (x::xs')
