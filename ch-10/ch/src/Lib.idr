@@ -10,10 +10,12 @@ data ListLast : List a -> Type where
   Empty : ListLast []
   NonEmpty : (xs : List a) -> (x : a) -> ListLast (xs ++ [x])
 
+-- 10.1.1
 describeHelper : (input : List Int) -> (form : ListLast input) -> String
 describeHelper [] Empty = "Empty"
 describeHelper (xs ++ [x]) (NonEmpty xs x) = "Non-empty, initial portion = " ++ show xs
 
+-- 10.1.2
 total
 listLast : (xs : List a) -> ListLast xs
 listLast [] = Empty
@@ -25,26 +27,24 @@ listLast (x::xs) =
 describeListEnd : List Int -> String
 describeListEnd xs = describeHelper xs (listLast xs)
 
+-- 10.1.3
 describeListEnd2 : List Int -> String
 describeListEnd2 input with (listLast input)
   describeListEnd2 [] | Empty = "Empty"
   describeListEnd2 (xs ++ [x]) | (NonEmpty xs x) = "Non-empty, initial portion = " ++ show xs
 
+-- 10.1.4
 partial
 myReverse : List a -> List a
 myReverse input with (listLast input)
   myReverse [] | Empty = []
   myReverse (xs ++ [x]) | (NonEmpty xs x) = x :: myReverse xs
 
+-- 10.1.5
 data SplitList : List a -> Type where
   SplitNil : SplitList []
   SplitOne : SplitList [x]
   SplitPair : (lefts : List a) -> (rights : List a) -> SplitList (lefts ++ rights)
-
-snocLeftEqConsRight : (ys : List a) -> (z : a) -> (r : List a) -> (ys++[z]) ++ r = ys ++ (z::r)
-snocLeftEqConsRight [] z r = Refl
-snocLeftEqConsRight (y::ys') z r =
-  rewrite (snocLeftEqConsRight ys' z r) in Refl
 
 total
 splitList : (input : List a) -> SplitList input
@@ -55,10 +55,14 @@ where
   splitListHelp _ [x] = SplitOne
   splitListHelp (_ :: _ :: counter) (item :: items)
       = case splitListHelp counter items of
-             SplitNil => SplitOne
+             SplitNil => SplitOne   -- Impossible, but because counter is not bound to input in type, this can't be rejected.
              SplitOne {x} => SplitPair [item] [x]
              SplitPair lefts rights => SplitPair (item :: lefts) rights
   splitListHelp _ items = SplitPair [] items
+
+appendAssoc : (xs, ys, zs : List a) -> (xs ++ ys) ++ zs = xs ++ (ys ++ zs)
+appendAssoc [] ys zs = Refl
+appendAssoc (x::xs) ys zs = let r = appendAssoc xs ys zs in rewrite r in Refl
 
 total
 splitList' : (xs : List a) -> SplitList xs
@@ -72,10 +76,10 @@ splitList' (x::xs') =
             LT => SplitPair (x::l) r
             EQ => SplitPair (x::l) r
             GT => case listLast l of
-                 Empty => SplitPair [x] r
+                 Empty => SplitPair [] (x::r)
                  NonEmpty ys y =>
                        let t = SplitPair (x::ys) (y::r)
-                       in rewrite (snocLeftEqConsRight ys y r) in t
+                       in rewrite appendAssoc ys [y] r in t
 
 data SplitList2 : List a -> Type where
   SplitNil2 : SplitList2 []
@@ -101,9 +105,9 @@ splitList2 (x::xs') =
        SplitNeq2 l r {neqPrf = neqPrf} => case listLast l of
             Empty impossible
             NonEmpty ys y =>
-                 let eqPrf = rewrite snocLen y ys in neqPrf
-                  in rewrite (snocLeftEqConsRight ys y r)
-                  in SplitEq2 (x::ys) (y::r) {eqPrf = eqPrf}
+                    let eqPrf = rewrite snocLen y ys in neqPrf
+                    in rewrite appendAssoc ys [y] r in
+                            SplitEq2 (x::ys) (y::r) {eqPrf = eqPrf}
 
 data SplitList3 : List a -> Type where
   SplitNil3 : SplitList3 []
@@ -128,7 +132,7 @@ splitList3 (x::xs') =
             Empty impossible
             NonEmpty ys y =>
                 let lenPrf' = rewrite snocLen y ys in lenPrf
-                in rewrite (snocLeftEqConsRight ys y r)
+                in rewrite (appendAssoc ys [y] r)
                 in SplitPair3 (x::ys) (y::r) {lenPrf = lenPrf'}
        SplitPair3 l r {lenDiff = FS (FS k)} impossible
 
@@ -153,6 +157,7 @@ mergeSort3 xs with (splitList3 xs)
   mergeSort3 [x] | SplitOne3 = [x]
   mergeSort3 (l ++ r) | SplitPair3 l r = merge (mergeSort3 l) (mergeSort3 r)
 
+-- 10.2.1
 data MySnocList ty = EmptyMySnoc | MySnoc (MySnocList ty) ty
 
 reverseSnoc : MySnocList ty -> List ty
@@ -167,16 +172,27 @@ listRightNeutral : (xs : List a) -> xs ++ [] = xs
 listRightNeutral [] = Refl
 listRightNeutral (x::xs') = cong (x::) (listRightNeutral xs')
 
-listAppendAssociative : (xs, ys, zs : List a) -> (xs ++ (ys ++ zs)) = ((xs ++ ys) ++ zs)
-listAppendAssociative [] ys zs = Refl
-listAppendAssociative (x::xs') ys zs = cong (x::) (listAppendAssociative xs' ys zs)
+-- In fact, i don't need zs. It's enough to know, that result is the sum of
+-- argument lists, no need to know, that this sum is in fact equal to some
+-- other list.
+snocList2h : {zs, ys : List a} -> (xs : List a) -> (acc : SnocList ys) ->
+                              {prf : zs = ys ++ xs} ->
+                              SnocList zs
+snocList2h [] acc = rewrite prf in rewrite listRightNeutral ys in acc
+snocList2h (x::xs') rec =
+  let recPrf = rewrite appendAssoc ys [x] xs' in Refl
+      t = snocList2h xs' (Snoc {x = x} rec) {prf = recPrf}
+  in  rewrite prf in t
+
+snocList2 : (xs : List a) -> SnocList xs
+snocList2 xs = let t = snocList2h {zs = xs} xs EmptySnoc {prf = Refl} in t
 
 snocListHelper : (xs : List a) ->
                   {ys : List a} -> (acc : SnocList ys) ->
                   SnocList (ys ++ xs)
 snocListHelper [] acc = rewrite listRightNeutral ys in acc
 snocListHelper (x::xs') acc =
-  rewrite listAppendAssociative ys [x] xs' in
+  rewrite sym (appendAssoc ys [x] xs') in
           snocListHelper xs' (Snoc {x = x} acc)
 
 total
@@ -192,6 +208,7 @@ total
 myReverseS : List a -> List a
 myReverseS xs = myReverseSHelper xs (snocList xs)
 
+-- 10.2.2
 partial
 isSuffix : Eq a => List a -> List a -> Bool
 isSuffix input1 input2 with (snocList input1, snocList input2)
@@ -297,16 +314,6 @@ splitAtSuccSndEq' Z _ xs = Refl
 splitAtSuccSndEq' (S k) _ xs with (splitAt (S k) xs)
   _ | (tk, dr) = Refl
 
-appendSplitAtEqSelf : (n : Nat) -> (xs : List a) -> (xs === uncurry (++) (splitAt n xs))
---appendSplitAtEqSelf : (n : Nat) -> (xs : List a) -> (xs === let (ll, rr) =  splitAt n xs in ll ++ rr)
-appendSplitAtEqSelf Z xs = Refl
-appendSplitAtEqSelf (S k) [] = Refl
-appendSplitAtEqSelf (S k) (x::xs') with (splitAt k xs') proof 0 eq
-  _ | (l, r) =
-        let rec = appendSplitAtEqSelf k xs' in
-            rewrite rec in
-            rewrite eq in Refl
-
 total
 splitAtFstLte : (n : Nat) -> (xs : List a) -> length (fst (splitAt n xs)) `LTE` n
 splitAtFstLte Z xs = LTEZero
@@ -353,12 +360,22 @@ splitHalfSndLteHalfSucc (x1::x2::xs') with (splitAt (divHalf (length xs')) (x2::
       let rec = splitConsSndLteSucc x2 (splitHalfSndLteHalfSucc xs')
       in  rewrite cong snd (sym eq) in rec
 
+appendSplitAtEqSelf : (n : Nat) -> (xs : List a) -> (xs === uncurry (++) (splitAt n xs))
+--appendSplitAtEqSelf : (n : Nat) -> (xs : List a) -> (xs === let (ll, rr) =  splitAt n xs in ll ++ rr)
+appendSplitAtEqSelf Z xs = Refl
+appendSplitAtEqSelf (S k) [] = Refl
+appendSplitAtEqSelf (S k) (x::xs') with (splitAt k xs') proof 0 eq
+  _ | (l, r) =
+        let rec = appendSplitAtEqSelf k xs' in
+            rewrite rec in
+            rewrite eq in Refl
+
 -- Here is my SplitList covering function. Metric `m` is used to convince
 -- Idris, that list `xs` decreases in recursive call.
-mySplitList : (xs : List a) -> {m : Nat} -> {auto prf : length xs `LTE` m} -> MySplitRec xs
-mySplitList [] = MySplitRecNil
-mySplitList [x] = MySplitRecOne
-mySplitList (x1::x2::xs') {m = S t} {prf = LTESucc lte} with (splitAt (divHalf (length xs')) (x2::xs')) proof 0 eq
+mySplitRec' : (xs : List a) -> {m : Nat} -> {auto prf : length xs `LTE` m} -> MySplitRec xs
+mySplitRec' [] = MySplitRecNil
+mySplitRec' [x] = MySplitRecOne
+mySplitRec' (x1::x2::xs') {m = S t} {prf = LTESucc lte} with (splitAt (divHalf (length xs')) (x2::xs')) proof 0 eq
   _ | (l, r) with (t)
     _ | Z impossible
     _ | S k =
@@ -369,7 +386,7 @@ mySplitList (x1::x2::xs') {m = S t} {prf = LTESucc lte} with (splitAt (divHalf (
             fstRecPrf : LTE (S (length l)) (S k)
                       = LTESucc (fstPrf `transitive` divHalfLteSelf (length xs'))
                                `transitive` lte
-            fstRec = mySplitList (x1::l) {m = S k} {prf = fstRecPrf}
+            fstRec = mySplitRec' (x1::l) {m = S k} {prf = fstRecPrf}
             sndPrf : LTE (length r) (S (divHalf (S (length xs'))))
                     = rewrite cong snd (sym eq) in
                               splitConsSndLteSucc x2 (splitHalfSndLteHalfSucc xs')
@@ -377,8 +394,23 @@ mySplitList (x1::x2::xs') {m = S t} {prf = LTESucc lte} with (splitAt (divHalf (
                     = LTESucc (divHalfSuccLteSelf (length xs'))
             sndRecPrf : LTE (length r) (S k)
                       = (sndPrf `transitive` prf3) `transitive` lte
-            sndRec = mySplitList r {m = S k} {prf = sndRecPrf}
+            sndRec = mySplitRec' r {m = S k} {prf = sndRecPrf}
             rec = MySplitRecPair (x1::l) r (Delay fstRec) (Delay sndRec)
         in  rewrite appendSplitAtEqSelf (divHalf (length xs')) (x2::xs') in
             rewrite eq in
                     rec
+
+lteSelf : {n : Nat} -> LTE n n
+lteSelf {n = Z} = LTEZero
+lteSelf {n = S k} = LTESucc lteSelf
+
+mySplitRec : (xs : List a) -> MySplitRec xs
+mySplitRec xs = mySplitRec' xs {m = length xs} {prf = lteSelf}
+
+total
+mergeSort4 : Ord a => List a -> List a
+mergeSort4 xs with (mySplitRec xs)
+  mergeSort4 []  | MySplitRecNil = []
+  mergeSort4 [x] | MySplitRecOne = [x]
+  mergeSort4 (l ++ r) | MySplitRecPair l r lrec rrec =
+    merge (mergeSort4 l | lrec) (mergeSort4 r | rrec)

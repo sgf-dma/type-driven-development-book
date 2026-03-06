@@ -7,50 +7,36 @@ divHalf Z = Z
 divHalf (S Z) = Z
 divHalf (S (S t)) = S (divHalf t)
 
-total
-divHalfSuccLteSelf : (n : Nat) -> divHalf (S n) `LTE` n
-divHalfSuccLteSelf Z = LTEZero
-divHalfSuccLteSelf (S Z) = LTESucc LTEZero
-divHalfSuccLteSelf (S (S k)) = let rec = divHalfSuccLteSelf k in LTESucc (lteSuccRight rec)
+--total
+--f1 : (xs : List Int) -> {m : Nat} -> {auto prf : length xs `LTE` m} -> Int
+--f1 [] = 0
+--f1 [x] = x
+--f1 (_::x2::xs') {m = S Z} {prf = LTESucc lte} = absurd lte
+--f1 (x1::x2::xs') {m = S t@(S k)} {prf = LTESucc (LTESucc lte)} with (splitAt (divHalf (length xs')) (x2::xs')) proof 0 eq
+--  _ | (l, r) =
+--      let rec = f1 (x1::l) {m = S k} {prf = ?b3}
+--          --rec = f1 (x1::l) {m = t} {prf = ?b3}
+--      in rec
 
 total
-splitConsSndLteSucc : (y : a) -> {n, m : Nat} -> {xs : List a} ->
-                        length (snd (splitAt n     xs))  `LTE` m ->
-                        length (snd (splitAt n (y::xs))) `LTE` S m
-splitConsSndLteSucc _ {n = Z} {xs = xs} lte = LTESucc lte
-splitConsSndLteSucc _ {n = (S Z)} {xs = []} _ = LTEZero
-splitConsSndLteSucc _ {n = (S (S k))} {xs = []} _ = LTEZero
-splitConsSndLteSucc y {n = (S k)} {xs = x::xs'} lte with (splitAt k xs') proof 0 eq
-  _ | (l, r) with (splitAt k (x::xs')) proof 0 eq2
-    _ | (xl, xr) =
-        let rec = splitConsSndLteSucc x {n = k} {m = m} {xs = xs'} (rewrite eq in lte)
-        in rewrite cong snd (sym eq2) in rec
+f2 : (xs : List Int) -> {m : Nat} -> {auto prf : length xs `LTE` m} -> Int
+f2 [] = 0
+f2 [x] = x
+f2 (x1::x2::xs') {m = S t} {prf = LTESucc lte} with (splitAt (divHalf (length xs')) (x2::xs')) proof 0 eq
+  f2 (x1::x2::xs') {prf = LTESucc lte} | (l, r) with (t)
+    f2 (x1::x2::xs') {prf = LTESucc lte} | (l, r) | Z = absurd lte
+    f2 (x1::x2::xs') {prf = LTESucc (LTESucc lte)} | (l, r) | S k =
+          let rec = f2 (x1::l) {m = S k} {prf = ?b1}
+          in rec
 
-total
-splitHalfSndLteHalfSucc : (xs : List a) ->
-                    length (snd (splitAt (divHalf (length xs)) xs)) `LTE` (divHalf (S (length xs)))
-splitHalfSndLteHalfSucc [] = ?b1
-splitHalfSndLteHalfSucc (x::xs') = ?b2
-splitHalfSndLteHalfSucc (x1::x2::xs') with (splitAt (divHalf (length xs')) (x2::xs')) proof 0 eq
-  _ | (l, r) =
-      let rec = splitConsSndLteSucc x2 (splitHalfSndLteHalfSucc xs')
-      in  rewrite cong snd (sym eq) in rec
-
-total
-f5 : (xs : List Int) -> {m : Nat} -> {auto prf : length xs `LTE` m} -> Int
-f5 [] = 0
-f5 [x] = x
-f5 (_::x2::xs') {m = S Z} {prf = LTESucc lte} = absurd lte
-f5 (_::x2::xs') {m = S (S k)} {prf = LTESucc lte} with (splitAt (divHalf (length xs')) (x2::xs')) proof 0 eq
-  _ | (l, r) =
-      let
-          sndPrf : LTE (length r) (S (divHalf (S (length xs'))))
-                  = rewrite cong snd (sym eq) in
-                            splitConsSndLteSucc x2 (splitHalfSndLteHalfSucc xs')
-          prf3 : LTE (S (divHalf (S (length xs')))) (S (length xs'))
-                  = LTESucc (divHalfSuccLteSelf (length xs'))
-          recPrf : LTE (length r) (S k)
-                  = (sndPrf `transitive` prf3) `transitive` lte
-          rec = f5 r {m = S k} {prf = recPrf}
-      in ?c3
+--total
+--f3 : (xs : List Int) -> {m : Nat} -> {auto prf : length xs `LTE` m} -> Int
+--f3 [] = 0
+--f3 [x] = x
+--f3 (x1::x2::xs') {m = S t} {prf = LTESucc lte} with (t)
+--  f3 (x1::x2::xs') {prf = LTESucc lte} | Z = absurd lte
+--  f3 (x1::x2::xs') {prf = LTESucc (LTESucc lte)} | S k with (splitAt (divHalf (length xs')) (x2::xs')) proof 0 eq
+--      _ | (l, r) =
+--          let rec = f3 (x1::l) {m = S k} {prf = ?b2}
+--          in rec
 

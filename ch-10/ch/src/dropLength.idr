@@ -5,12 +5,14 @@ import Data.Nat
 
 %default total
 
+-- Function f drops one element from a list recursively until it reaches empty
+-- list and collects all intermediate results into resulting list.
 -- Works only with 'assert_smaller', though the argument is obviously smaller.
 partial
-f : (xs : List a) -> List a
+f : (xs : List a) -> List (List a)
 f [] = []
 --f (x::xs') = f (assert_smaller (x::xs') (drop 1 (x::xs')))
-f (x::xs') = f (drop 1 (x::xs'))
+f (x::xs') = xs' :: f (drop 1 (x::xs'))
 
 -- I may use special type to fix this, but..
 data DropList : Nat -> List a -> Type where
@@ -25,13 +27,13 @@ dropList (S k) [] = DropE
 dropList (S k) (x::xs) = Drop1 (dropList k xs)
 
 total
-f2 : (xs : List Int) -> List Int
+f2 : (xs : List Int) -> List (List Int)
 f2 [] = []
 f2 (x::xs') with (dropList 1 (x::xs'))
   f2 (x::[]) | Drop1 DropE impossible
-  f2 (x::ys) | Drop1 (Drop0 ys) = f2 ys
+  f2 (x::ys) | Drop1 (Drop0 ys) = ys :: f2 ys
 
--- It stil won't work for any n.
+-- It still won't work for any n.
 partial
 f3 : (n : Nat) -> (xs : List a) -> List (List a)
 f3 _ [] = []
@@ -80,16 +82,20 @@ f4 (S t) xs with (dropNList (S t) xs)
 -- So, the real fix is to add an extra argument, which will structurally show
 -- the decreasing argument.
 total
-g : (xs : List a) -> {l : Nat} -> {auto prf : l = length xs} -> List a
+g : (xs : List a) -> {l : Nat} -> {auto prf : l = length xs} -> List (List a)
 g [] {l = Z} = []
 g (x::xs') {l = S (length xs')} {prf = Refl} =
   let t = g (drop 1 (x::xs')) {l = length xs'}
-  in  t
+  in  xs' :: t
+
+lteSelf : {n : Nat} -> LTE n n
+lteSelf {n = Z} = LTEZero
+lteSelf {n = S k} = LTESucc lteSelf
 
 dropLengthLTE : (k : Nat) -> (xs : List a) -> (length (drop k xs)) `LTE` (length xs)
 dropLengthLTE Z [] = LTEZero
 dropLengthLTE (S t) [] = LTEZero
-dropLengthLTE Z (x::xs')     = let r = dropLengthLTE Z xs' in LTESucc r
+dropLengthLTE Z (x::xs')     = lteSelf
 dropLengthLTE (S t) (x::xs') = let r = dropLengthLTE t xs' in lteSuccRight r
 
 -- It's more complex for values greater, than 1
@@ -98,7 +104,6 @@ g3' : (xs : List a) -> {l : Nat} -> {auto prf : length xs `LTE` l} -> List a
 g3' [] = []
 g3' (x::xs') {l = Z} impossible
 g3' (x::xs') {l = S k} {prf = LTESucc lte} =
-  --let t = g3' (drop 3 (x::xs')) {prf = trans (dropLengthLTE 2 xs') lte}
   let t = g3' (drop 3 (x::xs')) {prf = transitive (dropLengthLTE 2 xs') lte}
   in  t
 
@@ -132,13 +137,10 @@ g3 (S k) (x::xs') {prf = LTESucc lte} =
       ys = drop (S k) (x::xs')
   in case ys of
          [] => []
-         _  => ys :: g3 (S k) ys {prf = transitive (dropLengthLTE k xs') lte}
+         _  => let t = g3 (S k) ys {prf = transitive (dropLengthLTE k xs') lte}
+               in  ys :: t
 
 -- Total implementation of f4 is slightly more difficult..
-
-lteSelf : {n : Nat} -> LTE n n
-lteSelf {n = Z} = LTEZero
-lteSelf {n = S k} = LTESucc lteSelf
 
 -- I can't prove neither of these two with existing 'splitAt' definition,
 -- because 'let' clause in 'splitAt' definition doesn't reduce.
@@ -155,7 +157,7 @@ splitAtSuccSndEq' (S k) _ xs with (splitAt (S k) xs)
 splitAtSndLength' : (n : Nat) -> {x : a} -> (xs : List a) ->
                     length (snd (splitAt (S n) (x::xs))) `LTE` length xs
 splitAtSndLength' Z [] = LTEZero
-splitAtSndLength' Z (x::xs') = LTESucc lteSelf
+splitAtSndLength' Z (x::xs') = lteSelf
 splitAtSndLength' (S k) [] = LTEZero
 splitAtSndLength' (S k) (y::xs') =
       let r = lteSuccRight (splitAtSndLength' k {x = y} {xs = xs'})
