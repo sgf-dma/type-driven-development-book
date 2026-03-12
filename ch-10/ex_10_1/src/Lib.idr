@@ -89,6 +89,9 @@ ne_plus_succ eq = let r1 : n + 0 === n + (S t)
                         --in zero_ne_succ (plusLeftCancel n 0 (S t) r1)
                         in uninhabited (plusLeftCancel n 0 (S t) r1)
 
+-- Added later: here, though function splits input list into two halves, i
+-- don't have proofs, that resulting list are indeed halves. See exercises
+-- 10.2 for implementation of view `Half`, which provides these proofs.
 halves2 : (xs : List a) -> {t : Nat} ->
                      {auto d : Fin 2} ->
                      {auto halfSum : length xs = 2*t + finToNat d} ->

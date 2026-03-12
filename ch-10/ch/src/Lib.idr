@@ -172,9 +172,10 @@ listRightNeutral : (xs : List a) -> xs ++ [] = xs
 listRightNeutral [] = Refl
 listRightNeutral (x::xs') = cong (x::) (listRightNeutral xs')
 
--- In fact, i don't need zs. It's enough to know, that result is the sum of
--- argument lists, no need to know, that this sum is in fact equal to some
--- other list.
+-- In fact, i don't need zs, knowing that result is the sum of argument list
+-- is enough. When this helper will be called the sum in the result will be
+-- set to the sum of initial arguments and than this value will be preserved
+-- by types across recursive calls.
 snocList2h : {zs, ys : List a} -> (xs : List a) -> (acc : SnocList ys) ->
                               {prf : zs = ys ++ xs} ->
                               SnocList zs
