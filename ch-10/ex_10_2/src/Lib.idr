@@ -93,29 +93,13 @@ data MyVList : List a -> Type where
   MyVOne : MyVList [x]
   MyVCons : {0 x : a} -> {0 y : a} -> (rec : MyVList xs) -> MyVList (x :: (xs ++ [y]))
 
-myVList : (xs : List a) -> MyVList xs
-myVList [] = MyVNil
-myVList (x::xs') with (snocList xs')
-  myVList [x] | Empty = MyVOne
-  myVList (x::(xs'' ++ [y])) | Snoc y xs'' rec =
-    let t = myVList xs''
-    in  ?y3 -- MyVCons t
-
-myVList2 : (xs : List a) -> MyVList xs
-myVList2 xs with (snocList xs)
-  myVList2 [] | Empty = MyVNil
-  myVList2 (xs' ++ [y]) | Snoc y xs' rec =
-    case xs' of
-         [] => MyVOne
-         (x::xs') => let t = (myVList2 xs' | ?y4) in MyVCons t
-
 succLengthEqAppend : (xs : List a) -> (x : a) ->  S (length xs) = length (xs ++ [x])
 succLengthEqAppend [] _ = Refl
 succLengthEqAppend (y::xs') x = rewrite (succLengthEqAppend xs' x) in Refl
 
 -- FIXME: Do i need SnocList view or just regular SnocList?
 total
-myVListHelper : (sl : SnocList ls) -> (rs : List a) -> (acc : MyVList zs) -> 
+myVListHelper : (sl : SnocList ls) -> (rs : List a) -> (acc : MyVList zs) ->
                 {auto prf : length ls = length rs} ->
                 MyVList (ls ++ zs ++ rs)
 myVListHelper Empty [] acc = rewrite appendNilRightNeutral zs in acc
@@ -132,8 +116,16 @@ myVListHelper (Snoc y ls' lrec) (r::rs') acc =
      rewrite sym (appendAssociative ls' [y] ((zs ++ [r]) ++ rs')) in
              rec
 
-myVListHelper3 : (sl : SnocList a) -> (rs : List a) ->
-                 {maxLen : LTE (length sl) n} -> DPair (SnocList a, List a) (\(xs, ys) => length xs + length ys = n)
+total
+myVListHelper3 : (sl : SnocList a) -> (rs : List a) -> (acc : MyVList zs) ->
+                 {auto prf : length sl = length rs} ->
+                 MyVList (sl <>> (zs ++ rs))
+myVListHelper3 Lin [] acc = rewrite appendNilRightNeutral zs in acc
+myVListHelper3 (sl' :< l) [] acc impossible
+myVListHelper3 (sl':<l) (r::rs') acc =
+  let rec = myVListHelper3 sl' rs' (MyVCons {x = l} {y = r} acc) {prf = injective prf}
+  in  rewrite appendAssociative zs [r] rs' in rec
+
 
 
 {-
@@ -334,6 +326,54 @@ myVList4 xs with (halfList xs)
   myVList4 (l ++ [c] ++ r) | Halves l [c] r {leftEqRight = leftEqRight} {centerPrf = LTESucc LTEZero} =
     myVListHelper (snocList l) r MyVOne {prf = leftEqRight}
   myVList4 (l ++ (c1::c2::cs) ++ r) | Halves l (c1::c2::cs) r {centerPrf = LTESucc lte} impossible
+
+ss2 : (sx : SnocList a) -> (ys : List a) ->
+      length (sx <>< ys) = length sx + length ys
+ss2 Lin [] = ?b1
+ss2 Lin (y::ys') = ?b2
+ss2 (sx':<x) [] = ?b3
+ss2 (sx':<x) (y::ys') =
+  let r1 = ss2 sx' ys'
+  in  ?b4
+
+snocTransitive : (sx : SnocList a) -> (x : a) -> (ys : List a) -> (sx :< x) <>< ys = sx <>< (x::ys)
+snocTransitive sx x [] = Refl
+snocTransitive sx x (y::ys') = Refl
+
+sss : (sx : SnocList a) -> (z : a) -> (ys : List a) ->
+      length ((sx :< z) <>< ys) = S (length (sx <>< ys))
+sss sx z [] = Refl
+sss sx z (y::ys') =
+  let rec = sss (sx :< z) y ys'
+      recZ = sss sx z ys'
+      recY = sss sx y ys'
+  in rewrite rec in rewrite recZ in rewrite recY in Refl
+
+snocNilLength : (xs : List a) -> length ([<] <>< xs) = length xs
+snocNilLength [] = Refl
+snocNilLength (x::xs') =
+  let rec = snocNilLength xs'
+      rrr = sss Lin x xs'
+  in rewrite sym rec in rewrite rrr in Refl
+
+snocDistributesOverAppend : (sx : SnocList a) -> (ys, zs : List a) ->
+                            sx <>> (ys ++ zs) = (sx <>< ys) <>> zs
+snocDistributesOverAppend sx [] zs = Refl
+snocDistributesOverAppend sx (y::ys') zs =
+  let rec = snocDistributesOverAppend (sx:<y) ys' zs
+    in rewrite rec in Refl
+
+myVList3 : (xs : List a) -> MyVList xs
+myVList3 xs with (halfList xs)
+  myVList3 (ls ++ [] ++ rs)  | Halves ls [] rs {leftEqRight = leftEqRight} {centerPrf = LTEZero} =
+    let h = myVListHelper3 (Lin <>< ls) rs MyVNil {prf = rewrite snocNilLength ls in leftEqRight}
+        ppp = snocDistributesOverAppend Lin ls rs
+    in rewrite ppp in h
+  myVList3 (ls ++ [c] ++ rs) | Halves ls [c] rs {leftEqRight = leftEqRight} {centerPrf = LTESucc LTEZero} =
+    let h = myVListHelper3 (Lin <>< ls) rs (MyVOne {x = c}) {prf = rewrite snocNilLength ls in leftEqRight}
+        ppp = snocDistributesOverAppend Lin ls (c::rs)
+    in rewrite ppp in h
+  myVList3 (ls ++ (c1::c2::cs) ++ rs) | Halves ls (c1::c2::cs) rs {centerPrf = LTESucc lte} impossible
 
 --myVList5 : (xs : List a) -> MyVList xs
 --myVList5 xs with (halfList xs) proof 0 halfPrf2
