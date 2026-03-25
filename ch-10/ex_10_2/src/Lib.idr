@@ -1,5 +1,6 @@
 module Lib
 
+import Data.Vect
 import Data.Nat
 import Data.Nat.Views
 import Data.Fin
@@ -24,14 +25,6 @@ equalSuffix : Eq a => List a -> List a -> List a
 equalSuffix xs ys = equalSuffix' xs ys <>> []
 
 -- Ex 10.2.2
-
-
--- Ex 10.2.3
-data MyHalfRec : Nat -> Type where
-  MyHalfRecZ : MyHalfRec 0
-  MyHalfRecEven : (n : Nat) -> (rec : Lazy (MyHalfRec n)) -> MyHalfRec (n + n)
-  MyHalfRecOdd : (n : Nat) -> (rec : Lazy (MyHalfRec n)) -> MyHalfRec (S (n + n))
-
 divHalf : (n : Nat) -> Nat
 divHalf Z = Z
 divHalf (S Z) = Z
@@ -47,6 +40,7 @@ even Z = True
 even (S Z) = False
 even (S (S k)) = even k
 
+-- FIXME: Can i use '0 prf' ?
 divEven : (n : Nat) -> (prf : even n = True) -> divHalf n + divHalf n = n
 divEven Z _ = Refl
 divEven (S Z) _ impossible
@@ -55,6 +49,7 @@ divEven (S (S k)) prf = let r = divEven k prf in
                              rewrite r in
                                      Refl
 
+-- FIXME: Can i use '0 prf' ?
 divOdd : (n : Nat) -> (prf : even n = False) -> S (divHalf n + divHalf n) = n
 divOdd Z _ impossible
 divOdd (S Z) _ = Refl
@@ -62,6 +57,114 @@ divOdd (S (S k)) prf = let r = divOdd k prf in
                             rewrite sym (plusSuccRightSucc (divHalf k) (divHalf k)) in
                             rewrite r in
                                     Refl
+
+data HalfNat : Nat -> Type where
+  EvenHalf : (k : Nat) -> HalfNat (k + k)
+  OddHalf  : (k : Nat) -> HalfNat (k + S k)
+
+halfNat : (n : Nat) -> HalfNat n
+halfNat Z = EvenHalf Z
+halfNat (S Z) = OddHalf Z
+halfNat (S (S t)) = case halfNat t of
+                          EvenHalf k => let r = EvenHalf (S k) in
+                                             rewrite plusSuccRightSucc k k in
+                                                     r
+                          OddHalf k => let r = OddHalf (S k) in
+                                            rewrite plusSuccRightSucc k (S k) in
+                                                    r
+
+data VectSplitHalf : Vect n a -> Type where
+  VSplitEven : {k : Nat} -> (left : Vect k a) -> (right : Vect k a) -> VectSplitHalf (left ++ right)
+  VSplitOdd :  {k : Nat} -> (left : Vect k a) -> (right : Vect (S k) a) -> VectSplitHalf (left ++ right)
+
+splitAppendEqSelf : {k : Nat} -> (xs : Vect (k + m) a) -> xs === uncurry (++) (splitAt k {m} xs)
+splitAppendEqSelf {k = Z} xs = Refl
+splitAppendEqSelf {k = S t} [] impossible
+splitAppendEqSelf {k = S t} (x::xs) with (splitAt t {m} xs) proof 0 eq
+  _ | (l, r) = let rec = splitAppendEqSelf {k = t} {m} xs in
+                   rewrite rec in
+                   rewrite eq in
+                           Refl
+
+-- FIXME: Use HalfRec?
+vectSplitHalf : {n : Nat} -> (xs : Vect n a) -> VectSplitHalf xs
+vectSplitHalf xs {n = n} with (halfNat n)
+  vectSplitHalf xs {n = k + k} | EvenHalf k with (splitAt k xs) proof 0 splitPrf
+    _ | (left, right) =
+        let prf = splitAppendEqSelf {k = k} {m = k} xs
+         in rewrite prf in rewrite splitPrf in VSplitEven left right
+  vectSplitHalf xs {n = k + S k} | OddHalf k with (splitAt k xs) proof 0 splitPrf
+    _ | (left, right) =
+        let prf = splitAppendEqSelf {k = k} {m = S k} xs
+         in rewrite prf in rewrite splitPrf in VSplitOdd left right
+
+-- Or i may define 'HalfNat' slightly different, providing proof as part of
+-- constructor.
+data HalfNat' : Nat -> Type where
+  EvenHalf' : (k : Nat) -> (halvesEq : n = k + k) -> HalfNat' n
+  OddHalf'  : (k : Nat) -> (halvesNeq : n = k + S k) -> HalfNat' n
+
+halfNat' : (n : Nat) -> HalfNat' n
+halfNat' Z = EvenHalf' Z Refl
+halfNat' (S Z) = OddHalf' Z Refl
+halfNat' (S (S t)) = case halfNat' t of
+                          EvenHalf' k prf => rewrite prf in
+                                              rewrite plusSuccRightSucc k k in
+                                                      EvenHalf' (S k) Refl
+                          OddHalf' k prf =>
+                                             rewrite prf in
+                                             rewrite plusSuccRightSucc k (S k) in
+                                                     OddHalf' (S k) Refl
+
+-- But with such definition implementation of vectSplitHalf will be more
+-- verbose. I need to rewrite xs type each time, when i use it.
+vectSplitHalf' : {n : Nat} -> (xs : Vect n a) -> VectSplitHalf xs
+vectSplitHalf' xs with (halfNat' n)
+  vectSplitHalf' xs | EvenHalf' k halvesEq with (splitAt k {m = k} (rewrite sym halvesEq in xs)) proof 0 splitPrf
+    _ | (left, right) =
+        let prf = splitAppendEqSelf {k = k} {m = k} (rewrite sym halvesEq in xs)
+         in rewrite prf in
+            rewrite splitPrf in
+            rewrite halvesEq in
+                    VSplitEven left right
+  vectSplitHalf' xs | OddHalf' k halvesNeq with (splitAt k {m = S k} (rewrite sym halvesNeq in xs)) proof 0 splitPrf
+    _ | (left, right) =
+        let prf = splitAppendEqSelf {k = k} {m = S k} (rewrite sym halvesNeq in xs)
+         in rewrite prf in
+            rewrite splitPrf in
+            rewrite halvesNeq in
+                    VSplitOdd left right
+
+data MySplitRecV : Vect n a -> Type where
+  MyRecVNil : MySplitRecV []
+  MyRecVOne : MySplitRecV [x]
+  MyRecVPair : {n, m : Nat} -> (left : Vect n a) -> (right : Vect m a) ->
+                    (MySplitRecV left) -> (MySplitRecV right) ->
+                    MySplitRecV (left ++ right)
+
+mySplitRecV : {n : Nat} -> (xs : Vect n a) -> MySplitRecV xs
+mySplitRecV [] = MyRecVNil
+mySplitRecV [x] = MyRecVOne
+mySplitRecV xs with (vectSplitHalf xs) proof splitPrf
+  mySplitRecV (l ++ r) | VSplitEven l r =
+    let res = MyRecVPair l r (mySplitRecV l) (mySplitRecV r)
+    in res
+  mySplitRecV (l ++ r) | VSplitOdd l r =
+    let res = MyRecVPair l r (mySplitRecV l) (mySplitRecV r)
+    in res
+
+mergeSort : Ord a => {k : Nat} -> (xs : Vect k a) -> Vect k a
+mergeSort xs with 1 (mySplitRecV xs)
+  mergeSort [] | MyRecVNil = []
+  mergeSort [x] | MyRecVOne = [x]
+  mergeSort (l ++ r) | MyRecVPair l r lrec rrec =
+    merge (mergeSort l | lrec) (mergeSort r | rrec)
+
+-- Ex 10.2.3
+data MyHalfRec : Nat -> Type where
+  MyHalfRecZ : MyHalfRec 0
+  MyHalfRecEven : (n : Nat) -> (rec : Lazy (MyHalfRec n)) -> MyHalfRec (n + n)
+  MyHalfRecOdd : (n : Nat) -> (rec : Lazy (MyHalfRec n)) -> MyHalfRec (S (n + n))
 
 export
 myHalfRec : (n : Nat) -> MyHalfRec n
