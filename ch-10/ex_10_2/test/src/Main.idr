@@ -1,5 +1,6 @@
 module Main
 
+import Data.Vect
 import Data.List
 import Data.Nat
 import Data.Nat.Views
@@ -12,6 +13,45 @@ testEqualSuffix =
   [ equalSuffix [1,2,4,5] [1..5] == [4,5]
   , equalSuffix [1,2,4,5,6] [1..5] == []
   , equalSuffix [1,2,4,5,6] [1..6] == [4,5,6]
+  ]
+
+testHalfNat : List Bool
+testHalfNat =
+  [ halfNat 0 == EvenHalf 0
+  , halfNat 1 == OddHalf 0
+  , halfNat 2 == EvenHalf 1
+  , halfNat 3 == OddHalf 1
+  , halfNat 4 == EvenHalf 2
+  , halfNat 5 == OddHalf 2
+  ]
+
+testVectSplitHalf : List Bool
+testVectSplitHalf =
+  [ vectSplitHalf {a = Int} {n = Z} [] == VSplitEven {a = Int} {k = Z} [] []
+  , vectSplitHalf [1] == VSplitOdd [] [1]
+  , vectSplitHalf [1,2] == VSplitEven [1] [2]
+  , vectSplitHalf [1,2,3] == VSplitOdd [1] [2,3]
+  , vectSplitHalf [1,2,3,4] == VSplitEven [1,2] [3,4]
+  , vectSplitHalf [1,2,3,4,5] == VSplitOdd [1,2] [3,4,5]
+  ]
+
+testMySplitRecV : List Bool
+testMySplitRecV =
+  [ mySplitRecV {a = Int} [] == MyRecVNil
+  , mySplitRecV [1] == MyRecVOne
+  , mySplitRecV [1,2] == MyRecVPair [1] [2] MyRecVOne MyRecVOne
+  , mySplitRecV [1,2,3] == MyRecVPair [1] [2,3]
+                                MyRecVOne
+                                (MyRecVPair [2] [3] MyRecVOne MyRecVOne)
+  , mySplitRecV [1,2,3,4] == MyRecVPair [1,2] [3,4]
+                                (MyRecVPair [1] [2] MyRecVOne MyRecVOne)
+                                (MyRecVPair [3] [4] MyRecVOne MyRecVOne)
+  ]
+
+testMergeSort : List Bool
+testMergeSort = 
+  [ mergeSort [3,2,1] == [1,2,3]
+  , mergeSort [5,1,4,3,2,6,8,7,9] == [1,2,3,4,5,6,7,8,9]
   ]
 
 testMyHalfRec : List Bool
@@ -106,7 +146,10 @@ checkBool v True = Just v
 main : IO ()
 main = do
   runTest "testEqualSuffix" () checkBool testEqualSuffix
+  runTest "testHalfNat" () checkBool testHalfNat
   runTest "testMyHalfRec" () checkBool testMyHalfRec
+  runTest "testVectSplitHalf" () checkBool testVectSplitHalf
+  runTest "testMergeSort" () checkBool testMergeSort
   runTest "testToBinary" () checkBool testToBinary
   runTest "testHalfList" () checkBool testHalfList
   runTest "testMyVList" () checkBool testMyVList

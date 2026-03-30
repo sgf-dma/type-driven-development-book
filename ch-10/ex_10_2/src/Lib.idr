@@ -1,6 +1,7 @@
 module Lib
 
 import Data.Vect
+import Data.Vect.Views
 import Data.Nat
 import Data.Nat.Views
 import Data.Fin
@@ -25,43 +26,16 @@ equalSuffix : Eq a => List a -> List a -> List a
 equalSuffix xs ys = equalSuffix' xs ys <>> []
 
 -- Ex 10.2.2
-divHalf : (n : Nat) -> Nat
-divHalf Z = Z
-divHalf (S Z) = Z
-divHalf (S (S t)) = S (divHalf t)
-
-divHalfLteSelf : (x : Nat) -> divHalf x `LTE` x
-divHalfLteSelf Z = LTEZero
-divHalfLteSelf (S Z) = LTEZero
-divHalfLteSelf (S (S k)) = let rec = divHalfLteSelf k in LTESucc (lteSuccRight rec)
-
-even : (n : Nat) -> Bool
-even Z = True
-even (S Z) = False
-even (S (S k)) = even k
-
--- FIXME: Can i use '0 prf' ?
-divEven : (n : Nat) -> (prf : even n = True) -> divHalf n + divHalf n = n
-divEven Z _ = Refl
-divEven (S Z) _ impossible
-divEven (S (S k)) prf = let r = divEven k prf in
-                             rewrite sym (plusSuccRightSucc (divHalf k) (divHalf k)) in
-                             rewrite r in
-                                     Refl
-
--- FIXME: Can i use '0 prf' ?
-divOdd : (n : Nat) -> (prf : even n = False) -> S (divHalf n + divHalf n) = n
-divOdd Z _ impossible
-divOdd (S Z) _ = Refl
-divOdd (S (S k)) prf = let r = divOdd k prf in
-                            rewrite sym (plusSuccRightSucc (divHalf k) (divHalf k)) in
-                            rewrite r in
-                                    Refl
-
+public export
 data HalfNat : Nat -> Type where
   EvenHalf : (k : Nat) -> HalfNat (k + k)
   OddHalf  : (k : Nat) -> HalfNat (k + S k)
 
+export
+Eq (HalfNat n) where
+  _ == _ = True
+
+export
 halfNat : (n : Nat) -> HalfNat n
 halfNat Z = EvenHalf Z
 halfNat (S Z) = OddHalf Z
@@ -73,9 +47,14 @@ halfNat (S (S t)) = case halfNat t of
                                             rewrite plusSuccRightSucc k (S k) in
                                                     r
 
+public export
 data VectSplitHalf : Vect n a -> Type where
   VSplitEven : {k : Nat} -> (left : Vect k a) -> (right : Vect k a) -> VectSplitHalf (left ++ right)
   VSplitOdd :  {k : Nat} -> (left : Vect k a) -> (right : Vect (S k) a) -> VectSplitHalf (left ++ right)
+
+export
+Eq (VectSplitHalf xs) where
+  _ == _ = True
 
 splitAppendEqSelf : {k : Nat} -> (xs : Vect (k + m) a) -> xs === uncurry (++) (splitAt k {m} xs)
 splitAppendEqSelf {k = Z} xs = Refl
@@ -86,7 +65,9 @@ splitAppendEqSelf {k = S t} (x::xs) with (splitAt t {m} xs) proof 0 eq
                    rewrite eq in
                            Refl
 
--- FIXME: Use HalfRec?
+-- There is no sense in using 'HalfRec' (see 'MyHalfRec' definition below)
+-- here, because this function does not recurse.
+export
 vectSplitHalf : {n : Nat} -> (xs : Vect n a) -> VectSplitHalf xs
 vectSplitHalf xs {n = n} with (halfNat n)
   vectSplitHalf xs {n = k + k} | EvenHalf k with (splitAt k xs) proof 0 splitPrf
@@ -135,6 +116,7 @@ vectSplitHalf' xs with (halfNat' n)
             rewrite halvesNeq in
                     VSplitOdd left right
 
+public export
 data MySplitRecV : Vect n a -> Type where
   MyRecVNil : MySplitRecV []
   MyRecVOne : MySplitRecV [x]
@@ -142,6 +124,11 @@ data MySplitRecV : Vect n a -> Type where
                     (MySplitRecV left) -> (MySplitRecV right) ->
                     MySplitRecV (left ++ right)
 
+export
+Eq (MySplitRecV xs) where
+  _ == _ = True
+
+export
 mySplitRecV : {n : Nat} -> (xs : Vect n a) -> MySplitRecV xs
 mySplitRecV [] = MyRecVNil
 mySplitRecV [x] = MyRecVOne
@@ -153,6 +140,7 @@ mySplitRecV xs with (vectSplitHalf xs) proof splitPrf
     let res = MyRecVPair l r (mySplitRecV l) (mySplitRecV r)
     in res
 
+export
 mergeSort : Ord a => {k : Nat} -> (xs : Vect k a) -> Vect k a
 mergeSort xs with 1 (mySplitRecV xs)
   mergeSort [] | MyRecVNil = []
@@ -161,6 +149,37 @@ mergeSort xs with 1 (mySplitRecV xs)
     merge (mergeSort l | lrec) (mergeSort r | rrec)
 
 -- Ex 10.2.3
+divHalf : (n : Nat) -> Nat
+divHalf Z = Z
+divHalf (S Z) = Z
+divHalf (S (S t)) = S (divHalf t)
+
+divHalfLteSelf : (x : Nat) -> divHalf x `LTE` x
+divHalfLteSelf Z = LTEZero
+divHalfLteSelf (S Z) = LTEZero
+divHalfLteSelf (S (S k)) = let rec = divHalfLteSelf k in LTESucc (lteSuccRight rec)
+
+even : (n : Nat) -> Bool
+even Z = True
+even (S Z) = False
+even (S (S k)) = even k
+
+divEven : (n : Nat) -> (0 prf : even n = True) -> divHalf n + divHalf n = n
+divEven Z _ = Refl
+divEven (S Z) _ impossible
+divEven (S (S k)) prf = let r = divEven k prf in
+                             rewrite sym (plusSuccRightSucc (divHalf k) (divHalf k)) in
+                             rewrite r in
+                                     Refl
+
+divOdd : (n : Nat) -> (0 prf : even n = False) -> S (divHalf n + divHalf n) = n
+divOdd Z _ impossible
+divOdd (S Z) _ = Refl
+divOdd (S (S k)) prf = let r = divOdd k prf in
+                            rewrite sym (plusSuccRightSucc (divHalf k) (divHalf k)) in
+                            rewrite r in
+                                    Refl
+
 data MyHalfRec : Nat -> Type where
   MyHalfRecZ : MyHalfRec 0
   MyHalfRecEven : (n : Nat) -> (rec : Lazy (MyHalfRec n)) -> MyHalfRec (n + n)
@@ -528,5 +547,11 @@ snocListTail (Snoc y (xs' ++ [y']) rec@(Snoc _ _ _)) =
                  Snoc y (tail (xs' ++ [y'])) r
 
 -- Just for lulz.
-finRefl : {0 lt : LT x n} -> x = finToNat (the (Fin n) (natToFinLT x))
+finRefl : {x, n : Nat} -> {lt : LT x n} -> x = finToNat (the (Fin n) (natToFinLT x))
+finRefl {x = Z} {n = Z} {lt = lt} impossible
+finRefl {x = Z} {n = S t} {lt = LTESucc LTEZero} = Refl
+finRefl {x = S k} {n = Z} {lt = lt} impossible
+finRefl {x = S k} {n = S t} {lt = LTESucc lt} =
+  let rec = finRefl {x = k} {n = t} {lt = lt}
+  in rewrite sym rec in Refl
 
