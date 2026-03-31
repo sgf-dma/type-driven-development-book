@@ -16,4 +16,4 @@ main2 : IO ()
 main2 = replWith initStore2 "Command: " processInput2
   where
     initStore2 : (scm : Schema ** DataStore2 scm)
-    initStore2 = (SString .+. SString .+. SInt ** MkData2 _ [])
+    initStore2 = (SString .+. SString .+. SInt ** empty2)

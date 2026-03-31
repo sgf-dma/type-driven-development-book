@@ -8,19 +8,22 @@ import Schema
 import Cmd
 import Datastore2
 
+
 export
-partial processInput2 : (scm ** DataStore2 scm) -> String -> Maybe (String, (scm' ** DataStore2 scm'))
+processInput2 : (scm ** DataStore2 scm) -> String -> Maybe (String, (scm' ** DataStore2 scm'))
 processInput2 (scm ** store) input
   = case parse scm input of
          Left err => Just ("Error: " ++ err ++ "\n", (_ ** store))
          Right (Add item) =>
-            Just ("ID " ++ show (size store) ++ "\n", (_ ** addToStore2 store item))
+            Just ("ID " ++ show (size store) ++ "\n", (_ ** appendToStore2 item store))
          Right GetAll => Just (displayResult (getAllEntries store), (_ ** store))
          Right (Get pos) => case getEntry2 pos store of
                                 Nothing => Just ("Out of range \n", (_ ** store))
-                                Just val => Just (display val, (_ ** store))
+                                Just val => Just (display val ++ "\n", (_ ** store))
          Right Size => Just (show (size store) ++ "\n", (_ ** store))
-         Right (Search scm' str) => ?cs -- Just (show (search (isInfixOf str) store) ++ "\n", store)
+         Right (Search sub subval) =>
+              let searchRes = searchWith store [] sub subval
+              in  Just (displayResult searchRes, (_ ** store))
          Right Quit => Nothing
          Right (SetSchema scm') =>
               case setSchema2 store scm' of
@@ -32,4 +35,3 @@ processInput2 (scm ** store) input
       where
         showResult : (Nat, SchemaType scm) -> String
         showResult (n, x) = "(" ++ show n ++ ", " ++ display x ++ ")"
-

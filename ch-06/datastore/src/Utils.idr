@@ -235,6 +235,12 @@ strUncons2 n input = swap <$> runWriterT (iterateM n go input)
                   Just (c, rest) => writerT (Just (rest, [c]))
                   --Just (c, rest) => MkWriterT (\cs => Just (rest, cs `snoc` c))
 
+-- Added later.
+-- Proof, that weaken does not change type, required below.
+weakenIsNeutral : (t : Fin n) -> finToNat (weaken t) = finToNat t
+weakenIsNeutral FZ = Refl
+weakenIsNeutral (FS k) = let rec = weakenIsNeutral k in rewrite rec in Refl
+
 -- Function taken from here: https://github.com/stephen-smith/tdd-idris-ex/blob/master/ex_6_3.idr#L99-L100 .
 -- Correct solution: https://github.com/buzden/idris2-collection-utils/blob/33e2433c5cfc420a6852ecc740b8f5c5807fafa4/src/Data/Vect/Extra.idr#L12 .
 -- My version here.
@@ -246,7 +252,7 @@ mapWithIndex : {k : Nat}
              -> Vect (finToNat n) a -> Vect (finToNat n) b
 mapWithIndex {k = Z}   _ FZ [] = []
 mapWithIndex {k = S l} _ FZ [] = []
-mapWithIndex {k = S l} f (FS t) (x :: xs) =
+mapWithIndex {k = S l} f (FS t) (x :: xs') =
   -- Note, that i lower 'k' (i.e. initial vector length) here and pass index
   -- value "inside" new value of function 'f' down into recursive call.
   -- Therefore, in fact, 'n' value will always be equal to 'k' at any moment.
@@ -255,16 +261,18 @@ mapWithIndex {k = S l} f (FS t) (x :: xs) =
   --    mapWithIndex : (f : Fin n -> a -> b) -> Vect n a -> Vect n b
   --
   -- will suffice. And, thus, the "correct solution" above.
-  let zs = mapWithIndex {k = l} (f . FS) _ xs
+  let zs = mapWithIndex {k = l} (f . FS) _ xs'
 
   -- The other variant is to use 'weaken' on t, i.e. making recursive call
   -- look like this:
-      zs' = mapWithIndex {k = S l} f (weaken t) ?xs
+      --zs' = mapWithIndex {k = S l} f (weaken t) ?xs
   -- but the hole ?xs then has the type 'Vect (finToNat (weaken t)) a', but
   -- the 'xs' has different type 'Vect (finToNat t) a' and to prove that it's
   -- in fact the same, i should prove, that 'finToNat t' is the same as
   -- 'finToNat (weaken t)' at type level. I failed to do this, though there
   -- is a function proving this - 'Data.Fin.Properties.finToNatWeakenNeutral',
   -- but i don't know how to use it.
+  -- Added later. Like this:
+      zs' = mapWithIndex {k = S l} f (weaken t) (rewrite weakenIsNeutral t in xs')
   in  f FZ x :: zs
 

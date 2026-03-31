@@ -7,6 +7,7 @@ import Data.Vect
 import Schema
 import Datastore
 import Cmd
+import Cmd2
 
 -- For use with 'interactiveTest'.
 export
@@ -35,4 +36,3 @@ testCmd =
   -- 13-
   , ("size", "2")
   ]
-

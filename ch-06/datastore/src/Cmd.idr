@@ -83,4 +83,3 @@ processInput store input
       where
         showResult : (Nat, SchemaType (schema store)) -> String
         showResult (n, x) = "(" ++ show n ++ ", " ++ display x ++ ")"
-

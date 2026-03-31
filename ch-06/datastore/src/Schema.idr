@@ -268,64 +268,64 @@ findSubtreeValuesV scm1 scm2 = snd . findSubtreeValuesV' scm1 scm2 (schemaHeight
 -- Type-level implementations.
 
 -- Only full Schema is recorded in type. Subtree Schema is recorded in value.
-data SchemaSubtree1 : Schema -> Type where
+data SchemaSubtree1 : (full : Schema) -> Type where
   JustSchema1 : (k : Schema) -> SchemaSubtree1 k
   LeftSubtree1 : {k : Schema} -> SchemaSubtree1 l -> SchemaSubtree1 (l .+. k)
   RightSubtree1 : {k : Schema} -> SchemaSubtree1 r -> SchemaSubtree1 (k .+. r)
 
-total subtreeSchema1 : SchemaSubtree1 s -> Schema
+total subtreeSchema1 : SchemaSubtree1 full -> Schema
 subtreeSchema1 (JustSchema1 scm) = scm
 subtreeSchema1 (LeftSubtree1 l) = subtreeSchema1 l
 subtreeSchema1 (RightSubtree1 r) = subtreeSchema1 r
 
--- Extract value matching particular Schema scm1 subtree from original value
--- with Schema scm1.
+-- Extract value matching particular full Schema's subtree from original value
+-- of type (SchemaType full)
 total subtreeValue1
-    : SchemaType scm1
-    -> (sub : SchemaSubtree1 scm1)
+    : SchemaType full
+    -> (sub : SchemaSubtree1 full)
     -> SchemaType (subtreeSchema1 sub)
 subtreeValue1 x (JustSchema1 _) = x
 subtreeValue1 (x, _) (LeftSubtree1 l)  = subtreeValue1 x l
 subtreeValue1 (_, y) (RightSubtree1 r) = subtreeValue1 y r
 
--- Find all subtrees with Schema scm2 in original Schema scm1.
+-- Find all subtrees with Schema sub in original Schema full.
 total findSubtrees1
-    : (scm1 : Schema) -> (scm2 : Schema)
-    -> Nat -- Height of original scm2 Schema.
-    -> (Nat, List (SchemaSubtree1 scm1))
-findSubtrees1 (sl .+. sr) scm2 scm2Height =
-  let (hl, left) = findSubtrees1 sl scm2 scm2Height
-      (hr, right) = findSubtrees1 sr scm2 scm2Height
+    : (full : Schema) -> (sub : Schema)
+    -> Nat -- Height of original sub Schema.
+    -> (Nat, List (SchemaSubtree1 full))
+findSubtrees1 (sl .+. sr) sub subHeight =
+  let (hl, left) = findSubtrees1 sl sub subHeight
+      (hr, right) = findSubtrees1 sr sub subHeight
       myHeight = maximum hl hr + 1
   in  (myHeight
-      , case compare myHeight scm2Height of
+      , case compare myHeight subHeight of
              LT => []
              GT => map LeftSubtree1 left ++ map RightSubtree1 right
-             -- Note here, because subtree's Schema scm2 is not recorded in
+             -- Note here, because subtree's Schema sub is not recorded in
              -- SchemaSubtree1 type, i don't need to assert Schema equality at
              -- type-level and regular value-level comparison is enough.
-             EQ => if (sl .+. sr) == scm2
+             EQ => if (sl .+. sr) == sub
                       then [JustSchema1 (sl .+. sr)]
                       else []
       )
-findSubtrees1 scm1 scm2 Z =
-  -- Note here, because subtree's Schema scm2 is not recorded in SchemaSubtree1
+findSubtrees1 full sub Z =
+  -- Note here, because subtree's Schema sub is not recorded in SchemaSubtree1
   -- type, i don't need to assert Schema equality at type-level and regular
   -- value-level comparison is enough.
-  (0, if scm1 == scm2 then [JustSchema1 scm1] else [])
+  (0, if full == sub then [JustSchema1 full] else [])
 findSubtrees1 _    _    (S _) = (0, [])
 
 findSubtreeValues1
-      : (scm1 : Schema) -> (scm2 : Schema)
-      -> SchemaType scm1 -> List (SchemaType scm2)
-findSubtreeValues1 scm1 scm2 val =
-  let h = schemaHeight scm2
-  in  case findSubtrees1 scm1 scm2 h of
+      : (full : Schema) -> (sub : Schema)
+      -> SchemaType full -> List (SchemaType sub)
+findSubtreeValues1 full sub val =
+  let h = schemaHeight sub
+  in  case findSubtrees1 full sub h of
            (_, a :: acc) => let w = subtreeValue1 val a
                                 -- I can't implement this, because here i have
                                 -- a list 'acc' of schema subtrees
                                 --
-                                --      List (SchemaSubtree1 scm1)
+                                --      List (SchemaSubtree1 full)
                                 --
                                 -- and subtreeValue1 returns values of type
                                 --
@@ -348,8 +348,8 @@ findSubtreeValues1 scm1 scm2 val =
 
 
 -- Here i record both subtree schema and full schema in type.
-export
-data SchemaSubtree : Schema -> Schema -> Type where
+public export
+data SchemaSubtree : (full : Schema) -> (sub : Schema) -> Type where
   JustSchema : (sub : Schema) -> SchemaSubtree sub sub
   LeftSubtree  : {k : Schema} -> SchemaSubtree l sub -> SchemaSubtree (l .+. k) sub
   RightSubtree : {k : Schema} -> SchemaSubtree r sub -> SchemaSubtree (k .+. r) sub
@@ -358,7 +358,7 @@ data SchemaSubtree : Schema -> Schema -> Type where
 -- type.
 
 export
-total subtreeValue : SchemaType scm1 -> SchemaSubtree scm1 scm2 -> SchemaType scm2
+total subtreeValue : SchemaType full -> SchemaSubtree full sub -> SchemaType sub
 subtreeValue x (JustSchema _) = x
 subtreeValue (x, _) (LeftSubtree l)  = subtreeValue x l
 subtreeValue (_, y) (RightSubtree r) = subtreeValue y r
@@ -366,36 +366,36 @@ subtreeValue (_, y) (RightSubtree r) = subtreeValue y r
 -- The same as 'findSubtrees1', but for 'SchemaSubtree'.
 export
 total findSubtrees
-        : (scm1 : Schema) -> (scm2 : Schema)
-        -> Nat -- Height of original scm2 Schema.
-        -> (Nat, List (SchemaSubtree scm1 scm2))
-findSubtrees (sl .+. sr) scm2 height =
-  let (hl, left) = findSubtrees sl scm2 height
-      (hr, right) = findSubtrees sr scm2 height
+        : (full : Schema) -> (sub : Schema)
+        -> (subHeight : Nat) -- Height of original sub Schema.
+        -> (Nat, List (SchemaSubtree full sub))
+findSubtrees (sl .+. sr) sub subHeight =
+  let (hl, left) = findSubtrees sl sub subHeight
+      (hr, right) = findSubtrees sr sub subHeight
       myHeight = maximum hl hr + 1
   in  (myHeight
-      , case compare myHeight height of
+      , case compare myHeight subHeight of
              LT => []
              GT => map LeftSubtree left ++ map RightSubtree right
-             -- Note here, that because subtree Schema scm2 is now recorded in
+             -- Note here, that because subtree Schema sub is now recorded in
              -- SchemaSubtree type, in order to use JustSchema constructor i
-             -- need to prove, that scm1 and scm2 schemas are equal at type
+             -- need to prove, that full and sub schemas are equal at type
              -- level.
-             EQ => case maybeEqualSchema (sl .+. sr) scm2 of
+             EQ => case maybeEqualSchema (sl .+. sr) sub of
                         Just (SameSchema (l .+. r)) => [JustSchema (l .+. r)]
                         _ => []
              -- Alternatively, i may implement schema equality inline without
              -- 'EqSchema' type. But the 'EqSchema' implementation is more
              -- clear, probably.
              {-
-             EQ => case maybeJustSubtree (sl .+. sr) scm2 of
+             EQ => case maybeJustSubtree (sl .+. sr) sub of
                         Just sub => [sub]
                         _ => []
                         -}
       )
   where
-    -- Return subtree schema as a subtree of itself, if scm1 is equal to scm2.
-    maybeJustSubtree : (scm1 : Schema) -> (scm2 : Schema) -> Maybe (SchemaSubtree scm1 scm2)
+    -- Return subtree schema as a subtree of itself, if full is equal to sub.
+    maybeJustSubtree : (full : Schema) -> (sub : Schema) -> Maybe (SchemaSubtree full sub)
     maybeJustSubtree SInt SInt = Just (JustSchema SInt)
     maybeJustSubtree SChar SChar = Just (JustSchema SChar)
     maybeJustSubtree SString SString = Just (JustSchema SString)
@@ -404,28 +404,30 @@ findSubtrees (sl .+. sr) scm2 height =
       (JustSchema r) <- maybeJustSubtree r1 r2 | _ => Nothing
       pure (JustSchema (l .+. r))
     maybeJustSubtree _ _ = Nothing
-findSubtrees scm1 scm2 Z =
+findSubtrees full sub Z =
   (0,
-      -- Note here, that because subtree Schema scm2 is now recorded in
+      -- Note here, that because subtree Schema sub is now recorded in
       -- SchemaSubtree type, in order to use JustSchema constructor i need
-      -- to prove, that scm1 and scm2 schemas are equal at type level.
-      case maybeEqualSchema scm1 scm2 of
+      -- to prove, that full and sub schemas are equal at type level.
+      case maybeEqualSchema full sub of
            Nothing => []
            Just (SameSchema scm) => [JustSchema scm]
   )
 findSubtrees _    _    (S _) = (0, [])
 
+-- Find all values with subtree Schema sub contained in a single value with
+-- Schema full.
 export
 total findSubtreeValues
-        : (scm1 : Schema) -> (scm2 : Schema)
-        -> SchemaType scm1 -> List (SchemaType scm2)
-findSubtreeValues scm1 scm2 val =
-  let h = schemaHeight scm2
-      (_, acc) = findSubtrees scm1 scm2 h
+        : (full : Schema) -> (sub : Schema)
+        -> SchemaType full -> List (SchemaType sub)
+findSubtreeValues full sub val =
+  let h = schemaHeight sub
+      (_, acc) = findSubtrees full sub h
       -- And now, unlike findSubtreeValues1, all is fine: i have a list 'acc'
       -- of schema subtrees
       --
-      --        List (SchemaSubtree scm1 scm2)
+      --        List (SchemaSubtree full sub)
       --
       -- and because subtree schema is recorded in type, it's known to be the
       -- same for all list elements. Thus, i can just use map to find
