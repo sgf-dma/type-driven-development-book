@@ -1,0 +1,10 @@
+[custom.all.wadler-views]
+type = "local"
+path = "."
+ipkg = "wadler-views.ipkg"
+test = "test/test.ipkg"
+
+[custom.all.wadler-views-test]
+type = "local"
+path = "test"
+ipkg = "test.ipkg"
