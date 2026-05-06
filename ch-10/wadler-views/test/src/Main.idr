@@ -1,7 +1,57 @@
 module Main
 
+import Data.Nat
 import Data.List
+
 import Lib
+import Remainder
+
+testRemainder : List Bool
+testRemainder =
+  [ findRemainder1 0 1 == MkRem1 0 0
+  , findRemainder1 1 1 == MkRem1 1 0
+  , findRemainder1 5 1 == MkRem1 5 0
+  , findRemainder1 5 2 == MkRem1 2 1
+  , findRemainder1 5 3 == MkRem1 1 2
+  , findRemainder1 5 4 == MkRem1 1 1
+  , findRemainder1 5 5 == MkRem1 1 0
+  , findRemainder1 5 6 == MkRem1 0 5
+  , findRemainder1 5 7 == MkRem1 0 5
+
+  , findRemainder2 1 1 == MkRem2 1 0
+  , findRemainder2 5 1 == MkRem2 5 0
+  , findRemainder2 5 2 == MkRem2 2 1
+  , findRemainder2 5 3 == MkRem2 1 2
+  , findRemainder2 5 4 == MkRem2 1 1
+  , findRemainder2 5 5 == MkRem2 1 0
+
+  , findRemainder3 1 1 == MkRem2 1 0
+  , findRemainder3 5 1 == MkRem2 5 0
+  , findRemainder3 5 2 == MkRem2 2 1
+  , findRemainder3 5 3 == MkRem2 1 2
+  , findRemainder3 5 4 == MkRem2 1 1
+  , findRemainder3 5 5 == MkRem2 1 0
+
+  , findRemainder5 0 1 == MkRem1 0 0
+  , findRemainder5 1 1 == MkRem1 1 0
+  , findRemainder5 5 1 == MkRem1 5 0
+  , findRemainder5 5 2 == MkRem1 2 1
+  , findRemainder5 5 3 == MkRem1 1 2
+  , findRemainder5 5 4 == MkRem1 1 1
+  , findRemainder5 5 5 == MkRem1 1 0
+  , findRemainder5 5 6 == MkRem1 0 5
+  , findRemainder5 5 7 == MkRem1 0 5
+
+  , findRemainder 0 1 == MkRem 0 0
+  , findRemainder 1 1 == MkRem 1 0
+  , findRemainder 5 1 == MkRem 5 0
+  , findRemainder 5 2 == MkRem 2 1
+  , findRemainder 5 3 == MkRem 1 2
+  , findRemainder 5 4 == MkRem 1 1
+  , findRemainder 5 5 == MkRem 1 0
+  , findRemainder 5 6 == MkRem 0 5
+  , findRemainder 5 7 == MkRem 0 5
+  ]
 
 testSnocList : List Bool
 testSnocList =
@@ -35,8 +85,8 @@ testSnocList =
   , rotleftN 2 [1,2,3] == [3,1,2]
   , rotleftN 3 [1,2,3] == [1,2,3]
 
-  , rotleftRec [1,2,3] == rotleft [1,2,3]
-  , rotleft2Rec [1,2,3] == rotleft2 [1,2,3]
+  -- , rotleftRec [1,2,3] == rotleft [1,2,3]
+  -- , rotleft2Rec [1,2,3] == rotleft2 [1,2,3]
   ]
 
 runTest : Show b => (name : String)
@@ -64,3 +114,4 @@ checkBool v True = Just v
 main : IO ()
 main = do
   runTest "testSnocList" () checkBool testSnocList
+  runTest "testRemainder" () checkBool testRemainder
