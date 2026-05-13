@@ -3,8 +3,13 @@ module Lib
 import Data.Nat
 import Data.List
 import Data.List.Views
+import Data.Vect
+import Data.Vect.Views
 import Decidable.Equality
 import Syntax.PreorderReasoning
+
+import SnocVect
+
 
 %default total
 -- 2 Viewing an integer as zero or a succesor
@@ -32,6 +37,8 @@ fib m =
 
 -- 5.Viewing a list backwards
 
+-- Note the difference from 'Data.List.Views.SnocList': this one is not
+-- recursive and type parameter is not a List, but list element's type.
 data MySnocList : Type -> Type where
   MyNilSnoc : MySnocList a
   MySnoc : (rest : List a) -> (x : a) -> MySnocList a
@@ -78,9 +85,12 @@ rotright2 xs = case (mySnocList xs) of
 export
 rotrightN : (n : Nat) -> List a -> List a
 rotrightN Z xs = xs
+rotrightN (S t) xs = rotrightN t (rotright xs)
+{-
 rotrightN (S t) xs = case (mySnocList xs) of
                        MyNilSnoc => []
                        MySnoc rest x => rotrightN t (x::rest)
+                       -}
 
 -- Rotate list to the left. One full list traversal.
 export
@@ -101,7 +111,8 @@ rotleftN : (n : Nat) -> List a -> List a
 rotleftN Z xs = xs
 rotleftN (S t) xs = rotleftN t (rotleft xs)
 
--- Recursive view.
+-- Recursive version of MySnocList. Still, type parameter is not a List, but
+-- list element's type.
 data MySnocListRec : Type -> Type where
   MyNilSnocRec : MySnocListRec a
   MySnocRec : (rest : MySnocListRec a) -> (x : a) -> MySnocListRec a
@@ -144,7 +155,8 @@ rotrightRec xs = case (mySnocListRec xs) of
                    MySnocRec rest x => x::(mySnocOutRec rest)
 
 -- But here is the difference: i don't need to traverse 'rest' again to obtain
--- second from last element.
+-- second from last element and i traverse list twice no matter how much i
+-- rotate.
 export
 rotright2Rec : List a -> List a
 rotright2Rec xs = case (mySnocListRec xs) of
@@ -157,21 +169,140 @@ rotright2Rec xs = case (mySnocListRec xs) of
 -- Therefore, if i rotate a long list by some big n, this implementation will
 -- be more efficient, because it'll still need only 2 traversals: to build
 -- MySnocListRec and to rebuild it again into list at the end.
+total
 export
-partial
 rotrightNRec : (n : Nat) -> (xs : List a) -> List a
 rotrightNRec n xs = go n [] (mySnocListRec xs)
   where
     go : (n : Nat) -> (acc : List a) -> (rest : MySnocListRec a) -> List a
     go Z acc rest = acc ++ (mySnocOutRec rest)
-    -- Wrong, but pass totality checker.
-    --go (S t) acc MyNilSnocRec = []
-    -- Following case breaks totality check. And i don't know a fix for it,
-    -- except rewrite to more restricted version below.
-    go (S t) acc MyNilSnocRec = go (S t) [] (mySnocListRec acc)
+    go (S t) acc MyNilSnocRec =
+      case mySnocListRec acc of
+           MyNilSnocRec => []
+           MySnocRec rest x => go t [x] rest
     go (S t) acc (MySnocRec rest x) = go t (x::acc) rest
 
+{-
+go2 : (n : Nat) -> (xs : List a) -> {lte : n `LTE` length xs} -> (acc : List a) -> List a
+go2 Z xs acc = acc ++ xs
+go2 (S t) (x::xs') acc {lte = LTESucc lte'} with (mySnocListRec (x::xs'))
+  -- This is impossible case, but because `MySnocListRec` type does depend on
+  -- list itself (as `SnocList` does), i can't deduce empty list from
+  -- `MyNilSnocRec` constructor. And, as a consequence, `lte` argument is
+  -- useless here, because i can't use it to prove impossible case (because i
+  -- haven't proved, that `length xs = 0`)
+  _ | MyNilSnocRec = ?go2_impossible
+  go2 (S t) (x::xs') acc | MySnocRec rest z =
+    let rec = (go2 t xs' (x::acc) | rest) in ?b1
+    -}
 
+total
+go2 : (n : Nat) -> (xs : List a) -> {lte : n `LTE` length xs} -> (acc : List a) -> List a
+-- I use 'xs' only for 'lte' argument and for constructing view.
+go2 n xs acc {lte} with (mySnocListRec xs)
+  -- 'MyNilSnocRec' doesn't refine 'xs' to [], because type 'MySnocListRec'
+  -- does not depend on list itself (as 'SnocList' does). As a consequence
+  -- 'lte' does not prove this case as impossible:
+  --
+  --    go2 (S t) [] acc {lte} | MyNilSnocRec impossible
+  --
+  -- (because i haven't proved, that `length xs = 0`) and, in fact, 'lte'
+  -- argument is useless here at all. I.e. the only possible arguments here
+  -- are:
+  --
+  --    go2 Z [] acc {lte} | MyNilSnocRec = acc ++ xs
+  --
+  -- but i can't prove it. Nevertheless, i still can implement this branch
+  -- without any refining.
+  go2 n _ acc {lte} | MyNilSnocRec = acc
+  go2 Z _ acc {lte} | MySnocRec rec z = acc ++ mySnocOutRec rec ++ [z]
+  go2 (S t) xs acc {lte = lte} | MySnocRec rec z =
+    go2 t xs (z::acc) {lte = lteSuccLeft lte} | rec
+
+rotrightNRec2 : (n : Nat) -> (xs : List a) -> {auto lte : n `LTE` length xs} -> List a
+rotrightNRec2 n xs = go2 n xs [] {lte = lte}
+
+snocLength : (xs : List a) -> (z : a) -> length (xs ++ [z]) = S (length xs)
+snocLength [] z = Refl
+snocLength (x::xs') z = cong S (snocLength xs' z)
+
+go3 : (n : Nat) -> (xs : List a) -> {lte : n `LTE` length xs} -> (acc : List a) -> List a
+go3 n xs acc {lte} with (snocList xs)
+  go3 Z [] acc {lte = LTEZero} | Empty = acc
+  -- 'SnocList' constructor contains both original list version 'rest' and
+  -- 'SnocList' version of 'rest' as 'rec'. Therefore, i don't need to undo
+  -- snocList as i did in go2 with `mySnocOutRec`, i already have it in
+  -- 'rest'.
+  go3 Z (rest ++ [z]) acc {lte} | Snoc z rest _ = acc ++ rest ++ [z]
+  -- This is impossible case, which i can't prove before with `MySnocListRec`.
+  -- Now i can prove it, because `snocList` refines `xs` to [] and because i
+  -- have `lte`, which has the type `lte : LTE (S t) 0` here.
+  go3 (S t) [] acc {lte} | Empty impossible
+  go3 (S t) (rest ++ [z]) acc {lte} | Snoc z rest rec =
+    let ltePrf : LTE (S t) (S (length rest))
+        ltePrf = rewrite sym (snocLength rest z) in lte
+    in case ltePrf of LTESucc lte' => (go3 t rest (z::acc) {lte = lte'} | rec)
+
+rotrightNRec3 : (n : Nat) -> (xs : List a) -> {auto lte : n `LTE` length xs} -> List a
+rotrightNRec3 n xs = go3 n xs {lte = lte} []
+
+-- My variant of snocListHelp from Data.List.Views. Not used. Note the
+-- difference: multiplicity of 'ys' is 0 in my version.
+snocListHelp : (acc : SnocList ys) -> (xs : List a) -> SnocList (ys ++ xs)
+snocListHelp acc [] = rewrite appendNilRightNeutral ys in acc
+snocListHelp Empty (x::xs') = snocListHelp (Snoc x [] Empty) xs'
+snocListHelp acc@(Snoc z rest _) (x::xs') =
+  let r = Snoc x (rest ++ [z]) acc
+  in rewrite appendAssociative (rest ++ [z]) [x] xs' in snocListHelp r xs'
+
+-- Version for Vectors. Without limit on 'n', but using my 'SnocVect'.
+vgo : (n : Nat) -> (xs : Vect m a) -> (acc : Vect k a) -> Vect (k + m) a
+vgo n {m = m'} xs acc with (snocVect xs)
+  vgo _      {m = _}      []               acc | EmptyV = rewrite plusZeroRightNeutral k in acc
+  vgo Z      {m = _}      xs@(rest ++ [z]) acc | SnocV z rest rec = acc ++ xs
+  vgo (S n') {m = m' + 1}    (rest ++ [z]) acc | SnocV z rest rec =
+    let result = (vgo n' rest (z::acc) | rec)
+        prf : k + (m' + 1) === S (k + m')
+        prf = Calc $
+                |~ k + (m' + 1)
+                ~~ k + S (m' + 0)
+                      ...(rewrite plusSuccRightSucc m' Z in Refl)
+                ~~ k + S m'
+                      ...(rewrite plusZeroRightNeutral m' in Refl)
+                ~~ S (k + m')
+                      ...(sym (plusSuccRightSucc k m'))
+    in  rewrite prf in result
+
+rotrightVecNRec : (n : Nat) -> (xs : Vect m a) -> Vect m a
+rotrightVecNRec n xs = vgo n xs []
+
+-- The same as above, but with limit on 'n'.
+vgo3 : (n : Nat) -> (xs : Vect m a) -> {lte : n `LTE` m} -> (acc : Vect k a) -> Vect (k + m) a
+vgo3 n {m = m'} xs acc {lte = lte} with (snocVect xs)
+  -- 'lte' allows to prove, that in this branch 'n === Z'
+  vgo3 Z      {m = _}         []            acc {lte = _} | EmptyV = rewrite plusZeroRightNeutral k in acc
+  vgo3 Z      {m = _}      xs@(rest ++ [z]) acc {lte = LTEZero} | SnocV z rest rec = acc ++ xs
+  vgo3 (S n') {m = m' + 1}    (rest ++ [z]) acc {lte = lte} | SnocV z rest rec =
+    let lteR : LTE (S n') (S m')
+        lteR = rewrite sym (plusZeroRightNeutral m') in
+               rewrite plusSuccRightSucc m' 0 in
+                       lte
+    in  case lteR of
+             LTESucc lte' =>
+               let result = (vgo3 n' rest (z::acc) {lte = lte'} | rec)
+                   prf : k + (m' + 1) === S (k + m')
+                   prf = Calc $
+                           |~ k + (m' + 1)
+                           ~~ k + S (m' + 0)
+                                 ...(rewrite plusSuccRightSucc m' Z in Refl)
+                           ~~ k + S m'
+                                 ...(rewrite plusZeroRightNeutral m' in Refl)
+                           ~~ S (k + m')
+                                 ...(sym (plusSuccRightSucc k m'))
+                in rewrite prf in result
+
+rotrightVecNRec3 : (n : Nat) -> (xs : Vect m a) -> {auto lte : n `LTE` m} -> Vect m a
+rotrightVecNRec3 n xs {lte} = vgo3 n xs [] {lte = lte}
 
 
 -- Not used
