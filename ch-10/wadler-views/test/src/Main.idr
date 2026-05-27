@@ -1,10 +1,12 @@
 module Main
 
 import Data.Nat
+import Data.Vect
 import Data.List
 
-import Lib
 import Remainder
+import SnocVect
+import Lib
 
 testRemainder : List Bool
 testRemainder =
@@ -53,14 +55,23 @@ testRemainder =
   , findRemainder 5 7 == MkRem 0 5
   ]
 
-testSnocList : List Bool
-testSnocList =
+testSnocVect : List Bool
+testSnocVect =
+  [ snocVect (the (Vect 0 Int) []) == EmptyV
+  , snocVect [1] == SnocV 1 [] EmptyV
+  , snocVect [1,2] == SnocV 2 [1] (SnocV 1 [] EmptyV)
+  , snocVect [1,2,3] == SnocV 3 [1,2] (SnocV 2 [1] (SnocV 1 [] EmptyV))
+  ]
+
+testRotrightList : List Bool
+testRotrightList =
   [ rotright [1,2,3] == [3,1,2]
+  , rotright2 [1,2,3] == [2,3,1]
 
   , rotrightN 0 [1,2,3] == [1,2,3]
   , rotrightN 1 [1,2,3] == rotright [1,2,3]
   , rotrightN 2 [1,2,3] == rotright2 [1,2,3]
-  , rotrightN 3 [1,2,3] == [1,2,3]
+  , rotrightN 3 [1,2,3] == rotrightN 0 [1,2,3]
   , rotrightN 4 [1,2,3] == rotrightN 1 [1,2,3]
   , rotrightN 5 [1,2,3] == rotrightN 2 [1,2,3]
   , rotrightN 6 [1,2,3] == rotrightN 3 [1,2,3]
@@ -76,17 +87,92 @@ testSnocList =
   , rotrightNRec 5 [1,2,3] == rotrightNRec 2 [1,2,3]
   , rotrightNRec 6 [1,2,3] == rotrightNRec 3 [1,2,3]
 
-  , rotleft [1,2,3] == [2,3,1]
+  , rotrightNRec2 0 [1,2,3] == rotrightNRec 0 [1,2,3]
+  , rotrightNRec2 1 [1,2,3] == rotrightNRec 1 [1,2,3]
+  , rotrightNRec2 2 [1,2,3] == rotrightNRec 2 [1,2,3]
+  , rotrightNRec2 3 [1,2,3] == rotrightNRec 3 [1,2,3]
+  , rotrightNRec2 4 [1,2,3] == rotrightNRec 4 [1,2,3]
+  , rotrightNRec2 5 [1,2,3] == rotrightNRec 5 [1,2,3]
+  , rotrightNRec2 6 [1,2,3] == rotrightNRec 6 [1,2,3]
+
+  , rotrightNRec3 0 [1,2,3] == rotrightNRec2 0 [1,2,3]
+  , rotrightNRec3 1 [1,2,3] == rotrightNRec2 1 [1,2,3]
+  , rotrightNRec3 2 [1,2,3] == rotrightNRec2 2 [1,2,3]
+  , rotrightNRec3 3 [1,2,3] == rotrightNRec2 3 [1,2,3]
+  , rotrightNRec3 4 [1,2,3] == rotrightNRec2 4 [1,2,3]
+  , rotrightNRec3 5 [1,2,3] == rotrightNRec2 5 [1,2,3]
+  , rotrightNRec3 6 [1,2,3] == rotrightNRec2 6 [1,2,3]
+  ]
+
+testRotrightVec : List Bool
+testRotrightVec =
+  [ rotrightVecNRec 0 [1,2,3] == [1,2,3]
+  , rotrightVecNRec 1 [1,2,3] == [3,1,2]
+  , rotrightVecNRec 2 [1,2,3] == [2,3,1]
+  , rotrightVecNRec 3 [1,2,3] == [1,2,3]
+  , rotrightVecNRec 4 [1,2,3] == rotrightVecNRec 1 [1,2,3]
+  , rotrightVecNRec 5 [1,2,3] == rotrightVecNRec 2 [1,2,3]
+  , rotrightVecNRec 6 [1,2,3] == rotrightVecNRec 3 [1,2,3]
+
+  , rotrightVecNRec3 0 [1,2,3] == rotrightVecNRec 0 [1,2,3]
+  , rotrightVecNRec3 1 [1,2,3] == rotrightVecNRec 1 [1,2,3]
+  , rotrightVecNRec3 2 [1,2,3] == rotrightVecNRec 2 [1,2,3]
+  , rotrightVecNRec3 3 [1,2,3] == rotrightVecNRec 3 [1,2,3]
+  , rotrightVecNRec3 4 [1,2,3] == rotrightVecNRec 4 [1,2,3]
+  , rotrightVecNRec3 5 [1,2,3] == rotrightVecNRec 5 [1,2,3]
+  , rotrightVecNRec3 6 [1,2,3] == rotrightVecNRec 6 [1,2,3]
+  ]
+
+testRotleftList : List Bool
+testRotleftList =
+  [ rotleft [1,2,3] == [2,3,1]
   , rotleft2 [1,2,3] == [3,1,2]
-  , rotleft (rotleft [1,2,3]) == rotleft2 [1,2,3]
 
   , rotleftN 0 [1,2,3] == [1,2,3]
-  , rotleftN 1 [1,2,3] == [2,3,1]
-  , rotleftN 2 [1,2,3] == [3,1,2]
-  , rotleftN 3 [1,2,3] == [1,2,3]
+  , rotleftN 1 [1,2,3] == rotleft [1,2,3]
+  , rotleftN 2 [1,2,3] == rotleft2 [1,2,3]
+  , rotleftN 3 [1,2,3] == rotleftN 0 [1,2,3]
+  , rotleftN 4 [1,2,3] == rotleftN 1 [1,2,3]
+  , rotleftN 5 [1,2,3] == rotleftN 2 [1,2,3]
+  , rotleftN 6 [1,2,3] == rotleftN 3 [1,2,3]
 
-  -- , rotleftRec [1,2,3] == rotleft [1,2,3]
-  -- , rotleft2Rec [1,2,3] == rotleft2 [1,2,3]
+  , rotleftRec [1,2,3] == rotleft [1,2,3]
+  , rotleft2Rec [1,2,3] == rotleft2 [1,2,3]
+
+  , rotleftNRec 0 [1,2,3] == rotleftN 0 [1,2,3]
+  , rotleftNRec 1 [1,2,3] == rotleftN 1 [1,2,3]
+  , rotleftNRec 2 [1,2,3] == rotleftN 2 [1,2,3]
+  , rotleftNRec 3 [1,2,3] == [1,2,3]
+  , rotleftNRec 4 [1,2,3] == rotleftNRec 1 [1,2,3]
+  , rotleftNRec 5 [1,2,3] == rotleftNRec 2 [1,2,3]
+  , rotleftNRec 6 [1,2,3] == rotleftNRec 3 [1,2,3]
+
+  , rotleftNRec3 0 [1,2,3] == rotleftNRec 0 [1,2,3]
+  , rotleftNRec3 1 [1,2,3] == rotleftNRec 1 [1,2,3]
+  , rotleftNRec3 2 [1,2,3] == rotleftNRec 2 [1,2,3]
+  , rotleftNRec3 3 [1,2,3] == rotleftNRec 3 [1,2,3]
+  , rotleftNRec3 4 [1,2,3] == rotleftNRec 4 [1,2,3]
+  , rotleftNRec3 5 [1,2,3] == rotleftNRec 5 [1,2,3]
+  , rotleftNRec3 6 [1,2,3] == rotleftNRec 6 [1,2,3]
+  ]
+
+testRotleftVec : List Bool
+testRotleftVec =
+  [ rotleftVecNRec 0 [1,2,3] == [1,2,3]
+  , rotleftVecNRec 1 [1,2,3] == [2,3,1]
+  , rotleftVecNRec 2 [1,2,3] == [3,1,2]
+  , rotleftVecNRec 3 [1,2,3] == [1,2,3]
+  , rotleftVecNRec 4 [1,2,3] == rotleftVecNRec 1 [1,2,3]
+  , rotleftVecNRec 5 [1,2,3] == rotleftVecNRec 2 [1,2,3]
+  , rotleftVecNRec 6 [1,2,3] == rotleftVecNRec 3 [1,2,3]
+
+  , rotleftVecNRec3 0 [1,2,3] == rotleftVecNRec 0 [1,2,3]
+  , rotleftVecNRec3 1 [1,2,3] == rotleftVecNRec 1 [1,2,3]
+  , rotleftVecNRec3 2 [1,2,3] == rotleftVecNRec 2 [1,2,3]
+  , rotleftVecNRec3 3 [1,2,3] == rotleftVecNRec 3 [1,2,3]
+  , rotleftVecNRec3 4 [1,2,3] == rotleftVecNRec 4 [1,2,3]
+  , rotleftVecNRec3 5 [1,2,3] == rotleftVecNRec 5 [1,2,3]
+  , rotleftVecNRec3 6 [1,2,3] == rotleftVecNRec 6 [1,2,3]
   ]
 
 runTest : Show b => (name : String)
@@ -113,5 +199,9 @@ checkBool v True = Just v
 
 main : IO ()
 main = do
-  runTest "testSnocList" () checkBool testSnocList
   runTest "testRemainder" () checkBool testRemainder
+  runTest "testSnocVect" () checkBool testSnocVect
+  runTest "testRotrightList" () checkBool testRotrightList
+  runTest "testRotrightVec" () checkBool testRotrightVec
+  runTest "testRotleftList" () checkBool testRotleftList
+  runTest "testRotleftVec" () checkBool testRotleftVec

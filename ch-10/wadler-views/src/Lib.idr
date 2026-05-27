@@ -8,6 +8,7 @@ import Data.Vect.Views
 import Decidable.Equality
 import Syntax.PreorderReasoning
 
+import Remainder
 import SnocVect
 
 
@@ -174,8 +175,8 @@ export
 rotrightNRec : (n : Nat) -> (xs : List a) -> List a
 rotrightNRec n xs = go n [] (mySnocListRec xs)
   where
-    go : (n : Nat) -> (acc : List a) -> (rest : MySnocListRec a) -> List a
-    go Z acc rest = acc ++ (mySnocOutRec rest)
+    go : (n : Nat) -> (acc : List a) -> (xs : MySnocListRec a) -> List a
+    go Z acc xs = acc ++ (mySnocOutRec xs)
     go (S t) acc MyNilSnocRec =
       case mySnocListRec acc of
            MyNilSnocRec => []
@@ -197,54 +198,125 @@ go2 (S t) (x::xs') acc {lte = LTESucc lte'} with (mySnocListRec (x::xs'))
     -}
 
 total
-go2 : (n : Nat) -> (xs : List a) -> {lte : n `LTE` length xs} -> (acc : List a) -> List a
--- I use 'xs' only for 'lte' argument and for constructing view.
-go2 n xs acc {lte} with (mySnocListRec xs)
-  -- 'MyNilSnocRec' doesn't refine 'xs' to [], because type 'MySnocListRec'
-  -- does not depend on list itself (as 'SnocList' does). As a consequence
-  -- 'lte' does not prove this case as impossible:
-  --
-  --    go2 (S t) [] acc {lte} | MyNilSnocRec impossible
-  --
-  -- (because i haven't proved, that `length xs = 0`) and, in fact, 'lte'
-  -- argument is useless here at all. I.e. the only possible arguments here
-  -- are:
-  --
-  --    go2 Z [] acc {lte} | MyNilSnocRec = acc ++ xs
-  --
-  -- but i can't prove it. Nevertheless, i still can implement this branch
-  -- without any refining.
-  go2 n _ acc {lte} | MyNilSnocRec = acc
-  go2 Z _ acc {lte} | MySnocRec rec z = acc ++ mySnocOutRec rec ++ [z]
-  go2 (S t) xs acc {lte = lte} | MySnocRec rec z =
-    go2 t xs (z::acc) {lte = lteSuccLeft lte} | rec
+rotrightNRec2Le : (n : Nat) -> (xs : List a) -> {auto lte : n `LTE` length xs} -> List a
+rotrightNRec2Le n xs = go n xs [] {lte = lte}
+  where
+    go : (n : Nat) -> (xs : List a) -> {lte : n `LTE` length xs} -> (acc : List a) -> List a
+    -- I use 'xs' only for 'lte' argument and for constructing view.
+    go n xs acc {lte} with (mySnocListRec xs)
+      -- 'MyNilSnocRec' doesn't refine 'xs' to [], because type 'MySnocListRec'
+      -- does not depend on list itself (as 'SnocList' does). As a consequence
+      -- 'lte' does not prove this case as impossible:
+      --
+      --    go (S t) [] acc {lte} | MyNilSnocRec impossible
+      --
+      -- (because i haven't proved, that `length xs = 0`) and, in fact, 'lte'
+      -- argument is useless here at all. I.e. the only possible arguments here
+      -- are:
+      --
+      --    go Z [] acc {lte} | MyNilSnocRec = acc ++ xs
+      --
+      -- but i can't prove it. Nevertheless, i still can implement this branch
+      -- without any refining.
+      go n _ acc {lte} | MyNilSnocRec = acc
+      go Z _ acc {lte} | MySnocRec rec z = acc ++ mySnocOutRec rec ++ [z]
+      go (S t) xs acc {lte = lte} | MySnocRec rec z =
+        go t xs (z::acc) {lte = lteSuccLeft lte} | rec
 
-rotrightNRec2 : (n : Nat) -> (xs : List a) -> {auto lte : n `LTE` length xs} -> List a
-rotrightNRec2 n xs = go2 n xs [] {lte = lte}
+export
+rotrightNRec2 : (n : Nat) -> (xs : List a) -> List a
+rotrightNRec2 n [] = []
+rotrightNRec2 n (x::xs') =
+  case findRemainder n (length (x::xs')) of
+       MkRem _ r {prfR} => rotrightNRec2Le r (x::xs') {lte = lteSuccLeft prfR}
 
 snocLength : (xs : List a) -> (z : a) -> length (xs ++ [z]) = S (length xs)
 snocLength [] z = Refl
 snocLength (x::xs') z = cong S (snocLength xs' z)
 
-go3 : (n : Nat) -> (xs : List a) -> {lte : n `LTE` length xs} -> (acc : List a) -> List a
-go3 n xs acc {lte} with (snocList xs)
-  go3 Z [] acc {lte = LTEZero} | Empty = acc
-  -- 'SnocList' constructor contains both original list version 'rest' and
-  -- 'SnocList' version of 'rest' as 'rec'. Therefore, i don't need to undo
-  -- snocList as i did in go2 with `mySnocOutRec`, i already have it in
-  -- 'rest'.
-  go3 Z (rest ++ [z]) acc {lte} | Snoc z rest _ = acc ++ rest ++ [z]
-  -- This is impossible case, which i can't prove before with `MySnocListRec`.
-  -- Now i can prove it, because `snocList` refines `xs` to [] and because i
-  -- have `lte`, which has the type `lte : LTE (S t) 0` here.
-  go3 (S t) [] acc {lte} | Empty impossible
-  go3 (S t) (rest ++ [z]) acc {lte} | Snoc z rest rec =
-    let ltePrf : LTE (S t) (S (length rest))
-        ltePrf = rewrite sym (snocLength rest z) in lte
-    in case ltePrf of LTESucc lte' => (go3 t rest (z::acc) {lte = lte'} | rec)
+total
+rotrightNRec3Le : (n : Nat) -> (xs : List a) -> {auto lte : n `LTE` length xs} -> List a
+rotrightNRec3Le n xs = go n xs {lte = lte} []
+  where
+    go : (n : Nat) -> (xs : List a) -> {lte : n `LTE` length xs} -> (acc : List a) -> List a
+    go n xs acc {lte} with (snocList xs)
+      go Z [] acc {lte = LTEZero} | Empty = acc
+      -- 'SnocList' constructor contains both original list version 'rest' and
+      -- 'SnocList' version of 'rest' as 'rec'. Therefore, i don't need to undo
+      -- snocList as i did in go2 with `mySnocOutRec`, i already have it in
+      -- 'rest'.
+      go Z (rest ++ [z]) acc {lte} | Snoc z rest _ = acc ++ rest ++ [z]
+      -- This is impossible case, which i can't prove before with `MySnocListRec`.
+      -- Now i can prove it, because `snocList` refines `xs` to [] and because i
+      -- have `lte`, which has the type `lte : LTE (S t) 0` here.
+      go (S t) [] acc {lte} | Empty impossible
+      go (S t) (rest ++ [z]) acc {lte} | Snoc z rest rec =
+        let ltePrf : LTE (S t) (S (length rest))
+            ltePrf = rewrite sym (snocLength rest z) in lte
+        in case ltePrf of LTESucc lte' => (go t rest (z::acc) {lte = lte'} | rec)
 
-rotrightNRec3 : (n : Nat) -> (xs : List a) -> {auto lte : n `LTE` length xs} -> List a
-rotrightNRec3 n xs = go3 n xs {lte = lte} []
+export
+rotrightNRec3 : (n : Nat) -> (xs : List a) -> List a
+rotrightNRec3 n [] = []
+rotrightNRec3 n (x::xs') =
+  case findRemainder n (length (x::xs')) of
+       MkRem _ r {prfR} => rotrightNRec3Le r (x::xs') {lte = lteSuccLeft prfR}
+
+
+
+-- This implementation is also worse, than Wadler's one, because Wadler has
+-- only single full list traversal, but here is two.
+export
+rotleftRec : (xs : List a) -> List a
+rotleftRec [] = []
+rotleftRec (x::xs') = mySnocOutRec (MySnocRec (mySnocListRec xs') x)
+
+-- So, here is an intresting difference: Wadler's version traverses full
+-- list at each step of building MySnocList, but here i still traverse full
+-- list only twice: first to build MySnocListRec, and then to rebuild it back
+-- to list.
+export
+rotleft2Rec : (xs : List a) -> List a
+rotleft2Rec [] = []
+rotleft2Rec (x::xs') =
+  case xs' of
+       [] => [x]
+       (x'::rest) => mySnocOutRec (MySnocRec (MySnocRec (mySnocListRec rest) x) x')
+
+-- Here i also have 'MySnocListRec' value as in go of 'rotrightNRec' above,
+-- but there, in rotright, i've been disassembling 'MySnocListRec' value
+-- recursively and, therefore, i may have been interested in using recursive
+-- view. But here i'm assembling 'MySnocListRec' value (i.e. it's an
+-- accumulator), so recursive view does not help here. So, no version 2 here
+-- and i'm going straight to version 3.
+export
+rotleftNRec : (n : Nat) -> (xs : List a) -> List a
+rotleftNRec n xs = go n xs MyNilSnocRec
+  where
+    go : (n : Nat) -> (rest : List a) -> (acc : MySnocListRec a) -> List a
+    go Z rest acc = rest ++ mySnocOutRec acc
+    go (S n') [] acc = case mySnocOutRec acc of
+                            [] => []
+                            (x::xs') => go n' xs' (MySnocRec MyNilSnocRec x)
+    go (S n') (x::xs') acc = go n' xs' (MySnocRec acc x)
+
+rotleftNRec3Le : (n : Nat) -> (xs : List a) -> {auto 0 lte : n `LTE` length xs} -> List a
+rotleftNRec3Le n xs {lte} = go n xs Empty {lte = lte}
+  where
+    go : (n : Nat) -> (xs : List a) -> {ys : List a} -> {0 lte : n `LTE` length xs} -> (acc : SnocList ys) -> List a
+    go Z xs {ys} acc = xs ++ ys
+    -- Note, that i don't need recursive argument in view here at all. So,
+    -- effectively this version is equivalent to 'go' in 'rotleftNRec', except
+    -- that version 1 accepts any 'n' and handles overflow by itself, but here
+    -- overflow is handled by the caller.
+    go (S n') (x::xs') {ys} acc {lte = LTESucc lte'} = go n' xs' (Snoc x ys acc) {lte = lte'}
+
+export
+rotleftNRec3 : (n : Nat) -> (xs : List a) -> List a
+rotleftNRec3 n [] = []
+rotleftNRec3 n (x::xs') =
+  case findRemainder n (length (x::xs')) of
+       MkRem _ r {prfR} => rotleftNRec3Le r (x::xs') {lte = lteSuccLeft prfR}
 
 -- My variant of snocListHelp from Data.List.Views. Not used. Note the
 -- difference: multiplicity of 'ys' is 0 in my version.
@@ -255,67 +327,187 @@ snocListHelp acc@(Snoc z rest _) (x::xs') =
   let r = Snoc x (rest ++ [z]) acc
   in rewrite appendAssociative (rest ++ [z]) [x] xs' in snocListHelp r xs'
 
--- Version for Vectors. Without limit on 'n', but using my 'SnocVect'.
-vgo : (n : Nat) -> (xs : Vect m a) -> (acc : Vect k a) -> Vect (k + m) a
-vgo n {m = m'} xs acc with (snocVect xs)
-  vgo _      {m = _}      []               acc | EmptyV = rewrite plusZeroRightNeutral k in acc
-  vgo Z      {m = _}      xs@(rest ++ [z]) acc | SnocV z rest rec = acc ++ xs
-  vgo (S n') {m = m' + 1}    (rest ++ [z]) acc | SnocV z rest rec =
-    let result = (vgo n' rest (z::acc) | rec)
-        prf : k + (m' + 1) === S (k + m')
-        prf = Calc $
-                |~ k + (m' + 1)
-                ~~ k + S (m' + 0)
-                      ...(rewrite plusSuccRightSucc m' Z in Refl)
-                ~~ k + S m'
-                      ...(rewrite plusZeroRightNeutral m' in Refl)
-                ~~ S (k + m')
-                      ...(sym (plusSuccRightSucc k m'))
-    in  rewrite prf in result
-
+-- Version for Vectors. Without limit on 'n', but using my 'SnocVect'. Compare
+-- with 'rotrightNRec'.
+export total
 rotrightVecNRec : (n : Nat) -> (xs : Vect m a) -> Vect m a
-rotrightVecNRec n xs = vgo n xs []
+rotrightVecNRec n xs0 = go n xs0 []
+  where
+    go : (n : Nat) -> {0 m : Nat} -> (xs : Vect m a) -> (acc : Vect k a) -> Vect (k + m) a
+    go n {m = m'} xs {k} acc with (snocVect xs)
+      go Z      {m = m'} xs {k} acc | _ = acc ++ xs
+      go (S n') {m = Z} [] {k} acc | EmptyV with (snocVect acc)
+        go (S n') {m = Z} [] {k = Z} [] | EmptyV | EmptyV = []
+        go (S n') {m = Z} [] {k = k' + 1} (rest ++ [z]) | EmptyV | SnocV z rest rec =
+          let prf : (k' + 1) + 0 === S k'
+              prf = Calc $
+                      |~ (k' + 1) + 0
+                      ~~ k' + 1 ...(plusZeroRightNeutral (k' + 1))
+                      ~~ S (k' + 0) ...(sym (plusSuccRightSucc k' 0))
+                      ~~ S k'
+                            ...(rewrite plusZeroRightNeutral k' in Refl)
+          in  rewrite prf in (go n' rest [z] | rec)
+      go (S n') {m = m' + 1} (rest ++ [z]) {k} acc | SnocV z rest rec =
+        let result = (go n' rest (z::acc) | rec)
+            prf : k + (m' + 1) === S (k + m')
+            prf = Calc $
+                    |~ k + (m' + 1)
+                    ~~ k + S (m' + 0) ...(rewrite plusSuccRightSucc m' Z in Refl)
+                    ~~ k + S m' ...(rewrite plusZeroRightNeutral m' in Refl)
+                    ~~ S (k + m') ...(sym (plusSuccRightSucc k m'))
+        in  rewrite prf in result
 
--- The same as above, but with limit on 'n'.
-vgo3 : (n : Nat) -> (xs : Vect m a) -> {lte : n `LTE` m} -> (acc : Vect k a) -> Vect (k + m) a
-vgo3 n {m = m'} xs acc {lte = lte} with (snocVect xs)
-  -- 'lte' allows to prove, that in this branch 'n === Z'
-  vgo3 Z      {m = _}         []            acc {lte = _} | EmptyV = rewrite plusZeroRightNeutral k in acc
-  vgo3 Z      {m = _}      xs@(rest ++ [z]) acc {lte = LTEZero} | SnocV z rest rec = acc ++ xs
-  vgo3 (S n') {m = m' + 1}    (rest ++ [z]) acc {lte = lte} | SnocV z rest rec =
-    let lteR : LTE (S n') (S m')
-        lteR = rewrite sym (plusZeroRightNeutral m') in
-               rewrite plusSuccRightSucc m' 0 in
-                       lte
-    in  case lteR of
-             LTESucc lte' =>
-               let result = (vgo3 n' rest (z::acc) {lte = lte'} | rec)
-                   prf : k + (m' + 1) === S (k + m')
-                   prf = Calc $
-                           |~ k + (m' + 1)
-                           ~~ k + S (m' + 0)
-                                 ...(rewrite plusSuccRightSucc m' Z in Refl)
-                           ~~ k + S m'
-                                 ...(rewrite plusZeroRightNeutral m' in Refl)
-                           ~~ S (k + m')
-                                 ...(sym (plusSuccRightSucc k m'))
-                in rewrite prf in result
+-- Version for Vectors with limit on 'n'. Compare with 'rotrightNRec3Le'.
+rotrightVecNRec3Le : (n : Nat) -> (xs : Vect m a) -> {auto lte : n `LTE` m} -> Vect m a
+rotrightVecNRec3Le n0 xs0 {lte = lte0} = go n0 xs0 [] {lte = lte0}
+  where
+    -- The same as above, but with limit on 'n'.
+    go : (n : Nat) -> {0 m : Nat} -> (xs : Vect m a) -> {lte : n `LTE` m} -> (acc : Vect k a) -> Vect (k + m) a
+    go n {m = m'} xs acc {lte = lte} with (snocVect xs)
+      -- 'lte' allows to prove, that in this branch 'n === Z'
+      --go Z {m = _} [] acc {lte = _} | EmptyV = rewrite plusZeroRightNeutral k in acc
+      --go Z {m = _} xs@(rest ++ [z]) acc {lte = LTEZero} | SnocV z rest rec = acc ++ xs
+      -- But in fact, i may combine this two cases into one:
+      go Z {m = _} xs acc {lte = _} | _ = acc ++ xs
+      go (S n') {m = m' + 1}    (rest ++ [z]) acc {lte = lte} | SnocV z rest rec =
+        let lteR : LTE (S n') (S m')
+            lteR = rewrite sym (plusZeroRightNeutral m') in
+                   rewrite plusSuccRightSucc m' 0 in
+                           lte
+        in  case lteR of
+                 LTESucc lte' =>
+                   let result = (go n' rest (z::acc) {lte = lte'} | rec)
+                       prf : k + (m' + 1) === S (k + m')
+                       prf = Calc $
+                               |~ k + (m' + 1)
+                               ~~ k + S (m' + 0)
+                                     ...(rewrite plusSuccRightSucc m' Z in Refl)
+                               ~~ k + S m'
+                                     ...(rewrite plusZeroRightNeutral m' in Refl)
+                               ~~ S (k + m')
+                                     ...(sym (plusSuccRightSucc k m'))
+                    in rewrite prf in result
 
-rotrightVecNRec3 : (n : Nat) -> (xs : Vect m a) -> {auto lte : n `LTE` m} -> Vect m a
-rotrightVecNRec3 n xs {lte} = vgo3 n xs [] {lte = lte}
+
+-- Note, that if i want to leave multiplicity of 'm' zero, i need a proof of
+-- `length xs' === m'`.
+export
+rotrightVecNRec3 : (n : Nat) -> (xs : Vect m a) -> Vect m a
+rotrightVecNRec3 n [] = []
+rotrightVecNRec3 n {m = S m'} (x::xs') =
+  case findRemainder n (length (x::xs')) of
+       MkRem _ r {prfR} => rotrightVecNRec3Le r (x::xs')
+                            {lte = rewrite sym (lengthCorrect xs') in lteSuccLeft prfR}
+
+-- Otherwise, using non-linear 'm', i may simplify 'lte' proof.
+rotrightVecNRec3' : {m : Nat} -> (n : Nat) -> (xs : Vect m a) -> Vect m a
+rotrightVecNRec3' n [] = []
+rotrightVecNRec3' n {m = S m'} (x::xs') =
+  case findRemainder n (S m') of
+       MkRem _ r {prfR} => rotrightVecNRec3Le r (x::xs') {lte = lteSuccLeft prfR}
+-- Compare with 'rotleftNRec'.
+export
+rotleftVecNRec : (n : Nat) -> (xs : Vect m a) -> Vect m a
+rotleftVecNRec n xs0 = rewrite sym (plusZeroRightNeutral m) in go n xs0 [] EmptyV
+  where
+    go : (n : Nat) -> {0 m : Nat} -> (xs : Vect m a) -> (ys : Vect k a) -> (acc : SnocVect ys) -> Vect (m + k) a
+    go Z xs ys _ = xs ++ ys
+    go (S n') [] [] _ = []
+    go (S n') [] {k = S k'} (y::ys') _ = rewrite sym (plusZeroRightNeutral k') in
+                                         rewrite plusSuccRightSucc k' 0 in
+                                                 go n' ys' [y] (SnocV y [] EmptyV)
+    go (S n') {m = S m'} (x::xs') {k = k} ys acc =
+      let prf : S (m' + k) === m' + (k + 1)
+          prf = Calc $
+                  |~ S (m' + k)
+                  ~~ m' + S k
+                        ...(plusSuccRightSucc m' k)
+                  ~~ m' + S (k + Z)
+                        ...(rewrite plusZeroRightNeutral k in Refl)
+                  ~~ m' + (k + 1)
+                        ...(rewrite plusSuccRightSucc k Z in Refl)
+        in rewrite prf in go n' xs' _ (SnocV x ys acc)
+
+-- Compare with 'rotleftNRec3Le'.
+rotleftVecNRec3Le : (n : Nat) -> (xs : Vect m a) -> {auto lte : n `LTE` m} -> Vect m a
+rotleftVecNRec3Le n xs0 = rewrite sym (plusZeroRightNeutral m) in go n xs0 [] EmptyV
+  where
+    go : (n : Nat) -> {0 m : Nat} -> (xs : Vect m a) -> {auto lte : n `LTE` m} -> (ys : Vect k a) -> (acc : SnocVect ys) -> Vect (m + k) a
+    go Z xs ys _ = xs ++ ys
+    go (S n') {m = S m'} (x::xs') {k = k} ys acc {lte = LTESucc lte'} =
+      let prf : S (m' + k) === m' + (k + 1)
+          prf = Calc $
+                  |~ S (m' + k)
+                  ~~ m' + S k
+                        ...(plusSuccRightSucc m' k)
+                  ~~ m' + S (k + Z)
+                        ...(rewrite plusZeroRightNeutral k in Refl)
+                  ~~ m' + (k + 1)
+                        ...(rewrite plusSuccRightSucc k Z in Refl)
+      in rewrite prf in go n' xs' _ (SnocV x ys acc) {lte = lte'}
+
+export
+rotleftVecNRec3 : (n : Nat) -> (xs : Vect m a) -> Vect m a
+rotleftVecNRec3 n [] = []
+rotleftVecNRec3 n {m = S m'} (x::xs') =
+  case findRemainder n (length (x::xs')) of
+       MkRem _ r {prfR = LTESucc prfR'} =>
+         rotleftVecNRec3Le r (x::xs')
+                           {lte = rewrite sym (lengthCorrect xs') in lteSuccRight prfR'}
 
 
--- Not used
-cmpSucc : CmpNat x y -> CmpNat (S x) (S y)
-cmpSucc (CmpLT t) = CmpLT t
-cmpSucc CmpEQ = CmpEQ
-cmpSucc (CmpGT t) = CmpGT t
+-- Recursive view providing proofs at type level.
+data MySnocListRec' : List a -> Type where
+  MyNilSnocRec' : MySnocListRec' []
+  MySnocRec' : (rest : MySnocListRec' xs) -> (x : a) -> MySnocListRec' (xs ++ [x])
 
-cmp : (x : Nat) -> (y : Nat) -> CmpNat x y
-cmp Z Z = CmpEQ
-cmp Z (S t) = CmpLT t
-cmp (S k) Z = CmpGT k
-cmp (S k) (S t) = let rec = Lib.cmp k t in cmpSucc rec
+mySnocListRec' : (xs : List a) -> MySnocListRec' xs
+mySnocListRec' xs = go xs MyNilSnocRec'
+  where
+    go : (xs : List a) -> (acc : MySnocListRec' ys) -> MySnocListRec' (ys ++ xs)
+    go [] acc = rewrite appendNilRightNeutral ys in acc
+    go (x::xs') acc =
+      rewrite appendAssociative ys [x] xs' in go xs' (MySnocRec' acc x)
+
+-- xs is erased at runtime, but requires rebuild of a list.
+mySnocOutRec' : {0 xs : List a} -> MySnocListRec' xs -> List a
+mySnocOutRec' MyNilSnocRec' = []
+mySnocOutRec' (MySnocRec' rest x) = mySnocOutRec' rest ++ [x]
+
+-- No rebuild, but xs is not erased.
+mySnocOutRec'1 : {xs : List a} -> MySnocListRec' xs -> List a
+mySnocOutRec'1 _ = xs
+
+-- These implementations are exactly the same as for 'MySnocListRec', except
+-- that here view refines patterns (though i don't need this).
+myLastRec' : (xs : List a) -> a
+myLastRec' xs with (mySnocListRec' xs)
+  myLastRec' [] | MyNilSnocRec' = ?undefLastRec'
+  myLastRec' (xs' ++ [x]) | MySnocRec' _ x = x
+
+rotrightRec' : (xs : List a) -> List a
+rotrightRec' xs = case (mySnocListRec' xs) of
+                   MyNilSnocRec' => []
+                   MySnocRec' rest x => x::(mySnocOutRec' rest)
+
+rotleftRec' : (xs : List a) -> List a
+rotleftRec' [] = []
+rotleftRec' (x::xs') = mySnocOutRec' (MySnocRec' (mySnocListRec' xs') x)
+
+-- So, essentially, SnocList view as described by Wadler, where 'rest' in Snoc
+-- view remains as cons-ed list, definitely has sense as demonstrated by
+-- examples. View as `MySnocListRec'`, which refines patterns, also has sense,
+-- because it refines patterns and may be used for type-level reasoning. But
+-- view as 'MySnocListRec' has no sense at all, because it misses cons-ed
+-- 'rest' from the Wadler's variant and misses pattern refiniment from the
+-- Idris's SnocList.
+
+
+
+
+
+
+-- Some leftover from experiments.
 
 decLTE : (x : Nat) -> (y : Nat) -> Dec (LTE x y)
 decLTE Z n = Yes LTEZero
@@ -323,18 +515,6 @@ decLTE (S t) Z = No uninhabited
 decLTE (S t) (S k) = case decLTE t k of
                           Yes lte => Yes (LTESucc lte)
                           No contra => No $ \(LTESucc lte) => contra lte
-
-
-
-go : (n : Nat) -> (acc : List a) -> (rest : MySnocListRec a) ->
-     {prf : LTE n (length (mySnocOutRec rest))} -> List a
-
--- Optimized version, which shortcircuits rotations by more, than (length xs).
-rotrightNRec' : (n : Nat) -> (xs : List a) -> {l : Nat} -> {auto 0 _ : l = length xs} -> List a
-rotrightNRec' n xs with (Lib.cmp n l) proof 0 comp
-  rotrightNRec' n xs | CmpLT t = ?a1
-  rotrightNRec' n xs | CmpEQ = ?a2
-  rotrightNRec' (m + S t) xs | CmpGT t = ?a3
 
 total
 minusLte : (n, m : Nat) -> {auto 0 lte : LTE m n} -> Nat
@@ -380,9 +560,6 @@ succMinusSuccNeutral (S n') m' {lte = LTESucc lte} with (lte)
 
 data IsLTESucc : LTE n m -> Type where
   ItIsLTESucc : (lte : LTE n m) -> IsLTESucc (LTESucc lte)
-
-fff : (l : LTE n m) -> IsLTESucc l -> Int
-fff (LTESucc lte) (ItIsLTESucc _) = ?ww1
 
 total
 succMinusIsSucc : (n, t : Nat) -> {auto 0 lte : t `LTE` n} ->
@@ -432,246 +609,3 @@ f {u = S u'} n (S t) with (minusLte n (S t) {lte = lte}) proof 0 minusPrf
                       let upPrf = lemma n {u = u'} upper {lte = lte}
                           rec = f (S k) (S t) {u = u'} {upper = rewrite sym minusPrf in upPrf}
                       in rec
-
-data Remainder : Nat -> Nat -> Type where
-  MkRem : {n, m : Nat} -> {auto lte : m `LTE` n} -> (k, r : Nat) -> {auto 0 prf1 : n = k*m + r} -> {auto 0 prf2 : r `LTE` m} -> Remainder n m
-
-multOneRight : (n : Nat) -> n `mult` 1 = n
-
-minusEqZero : (n, m : Nat) -> {auto lte : m `LTE` n} -> minusLte n m = 0 -> n = m
-
-minusEqPlus : (n, m, k : Nat) -> {auto lte : m `LTE` n} -> minusLte n m = k -> n = m + k
-
-plusLteRight : (n + m) `LTE` k -> m `LTE` k
-
-multDistOverPlusLeft : (a, b, c : Nat) -> (a + b) * c = a * c + b * c
-
-multDistOverPlusRight : (a, b, c : Nat) -> a * (b + c) = a * b + a * c
-
-multSuccLeft : (a, b : Nat) -> (a + 1) * b = b + a * b
-
--- FIXME: Rewrite using Calc.
-total
-f2 : (n : Nat) -> {auto u : Nat} -> {auto upper : n `LTE` u} ->
-     (m : Nat) -> {auto lte : S m `LTE` n} -> Remainder n (S m)
-f2 {upper = LTEZero} Z Z impossible
-f2 n Z = MkRem n 0 {prf1 = rewrite multOneRight n in
-                           rewrite plusZeroRightNeutral n in
-                                   Refl}
-f2 n {u = S u'} m with (minusLte n (S m)) proof 0 minusPrf
-  _ | Z = MkRem 1 0 {prf1 =  rewrite plusZeroRightNeutral m in
-                             rewrite plusZeroRightNeutral m in
-                                     minusEqZero n (S m) minusPrf}
-  _ | (S t) with (decEq (S m) (S t))
-    _ | Yes prf = MkRem 2 0 {prf1 = rewrite plusZeroRightNeutral m in
-                                    rewrite plusZeroRightNeutral (plus m (S m)) in
-                                    rewrite prf in
-                                    minusEqPlus n (S m) (S t) minusPrf}
-    _ | No contra with (connex contra {rel = LTE})
-      _ | Left smLteSk =
-              -- Either use the same proof as in f, or..
-              let upPrf : S (m + (S t)) `LTE` S u'
-                  upPrf = rewrite sym (minusEqPlus n (S m) (S t) minusPrf) in upper
-                  rec = f2 (S t) {u = u'} m {upper = plusLteRight (ltePred2 upPrf)} {lte = smLteSk}
-              in case rec of
-                  MkRem k r {prf1 = prf1} {prf2 = prf2} =>
-                    MkRem (k+1) r {prf2 = prf2}
-                                  {prf1 = rewrite multDistOverPlusLeft k 1 (S m) in
-                                          rewrite plusZeroRightNeutral m in
-                                          rewrite minusEqPlus n (S m) (S t) minusPrf in
-                                          rewrite prf1 in
-                                          rewrite sym (plusSuccRightSucc (mult k (S m)) m) in
-                                          rewrite plusCommutative (mult k (S m)) m in
-                                          rewrite sym (plusAssociative m (mult k (S m)) r) in
-                                                  Refl}
-      _ | Right skLteSm =
-              MkRem 1 (S t) {prf2 = skLteSm}
-                            {prf1 = rewrite plusZeroRightNeutral m in
-                                    minusEqPlus n (S m) (S t) minusPrf}
-
-total
-f3 : (n : Nat) -> {auto u : Nat} -> {auto upper : n `LTE` u} ->
-     (m : Nat) -> {auto lte : S m `LTE` n} -> Remainder n (S m)
-f3 {upper = LTEZero} Z Z impossible
-f3 n Z = MkRem n 0 {prf1 = Calc $ |~ n
-                                  ~~ n * 1 ...(sym (multOneRight n))
-                                  ~~ (n * 1) + 0 ...(sym (plusZeroRightNeutral (n * 1))) }
-f3 n {u = S u'} m with (minusLte n (S m)) proof 0 minusPrf
-  _ | Z = MkRem 1 0 {prf1 = Calc $
-                              |~ n
-                              ~~ S m ...(minusEqZero n (S m) minusPrf)
-                              ~~ S (m + 0) ...(sym (plusZeroRightNeutral (S m)))
-                              ~~ S ((m + 0) + 0) ...(sym (plusZeroRightNeutral (S (m + 0)))) }
-  _ | (S t) with (decEq (S m) (S t))
-    _ | Yes prf = MkRem 2 0 {prf1 = Calc $
-                              |~ n
-                              ~~ S m + S t ...(minusEqPlus n (S m) (S t) minusPrf)
-                              ~~ S m + S m ...(rewrite prf in Refl)
-                              ~~ S m + (S m + 0) ...(rewrite plusZeroRightNeutral (S m) in Refl)
-                              -- ~~ S m + (S m + 0) ...(rewrite plusZeroRightNeutral (S m) in
-                              --                        rewrite prf in
-                              --                                minusEqPlus n (S m) (S t) minusPrf)
-                              ~~ S (m + (S m + 0)) + 0 ...(sym (plusZeroRightNeutral (S m + (S m + 0)))) }
-                              -- ~~ S (m + (S m + 0)) + 0 ...(Refl) }
-                            {-rewrite plusZeroRightNeutral m in
-                                    rewrite plusZeroRightNeutral (plus m (S m)) in
-                                    rewrite prf in
-                                            minusEqPlus n (S m) (S t) minusPrf-}
-    _ | No contra with (connex contra {rel = LTE})
-      _ | Left smLteSk =
-              -- Either use the same proof as in f, or..
-              let upPrf : S (m + (S t)) `LTE` S u'
-                  upPrf = rewrite sym (minusEqPlus n (S m) (S t) minusPrf) in upper
-                  rec = f3 (S t) {u = u'} m {upper = plusLteRight (ltePred2 upPrf)} {lte = smLteSk}
-              in case rec of
-                  MkRem k r {prf1 = prf1} {prf2 = prf2} =>
-                    MkRem (k+1) r {prf2 = prf2}
-                                  {prf1 = Calc $
-                                      |~ n
-                                      ~~ S (m + S t)
-                                           ...(minusEqPlus n (S m) (S t) minusPrf)
-                                      ~~ S (m + (k * S m + r))
-                                           ...(rewrite sym prf1 in Refl)
-                                      ~~ m + (S (k * S m + r))
-                                           ...(plusSuccRightSucc m (k * S m + r))
-                                      ~~ (m + 1) + (k * S m + r)
-                                           ...(plusAssociative m 1 (k * S m + r))
-                                      ~~ (m + 1) + (k * (m + 1) + r)
-                                           ...(rewrite plusCommutative 1 m in Refl)
-                                      ~~ ((m + 1) + k * (m + 1)) + r
-                                           ...(plusAssociative (m + 1) (k * (m + 1)) r)
-                                      ~~ ((k + 1) * (m + 1)) + r
-                                           ...(rewrite sym (multSuccLeft k (m + 1)) in Refl)
-                                      ~~ ((k + 1) * (S (m + 0))) + r
-                                           ...(rewrite sym (plusSuccRightSucc m 0) in Refl)
-                                      ~~ ((k + 1) * (S m)) + r
-                                           ...(rewrite plusZeroRightNeutral m in Refl) }
-                                          {-rewrite multDistOverPlusLeft k 1 (S m) in
-                                          rewrite plusZeroRightNeutral m in
-                                          rewrite minusEqPlus n (S m) (S t) minusPrf in
-                                          rewrite prf1 in
-                                          rewrite sym (plusSuccRightSucc (mult k (S m)) m) in
-                                          rewrite plusCommutative (mult k (S m)) m in
-                                          rewrite sym (plusAssociative m (mult k (S m)) r) in
-                                                  Refl
-                                                  -}
-      _ | Right skLteSm =
-              MkRem 1 (S t) {prf2 = skLteSm}
-                            {prf1 = Calc $
-                                      |~ n
-                                      ~~ S m + S t ...(minusEqPlus n (S m) (S t) minusPrf)
-                                      ~~ S ((m + 0) + S t) ...(rewrite sym (plusZeroRightNeutral m) in Refl)
-                            }
-                            {-rewrite plusZeroRightNeutral m in
-                                    minusEqPlus n (S m) (S t) minusPrf}
-
-
-
-
-
-
-
-
-example : (x : Nat) -> (x + 1) + 0 = 1 + x
-example x =
-  Calc $
-   (?d1 {-|~ (x + 1) + 0
-   ~~ x+1  ...( plusZeroRightNeutral $ x + 1 ) -}
-   ~~ 1+x  ...( plusCommutative x 1          ))
-
-
-lemmaNR : (n, t : Nat) -> (upper : n `LTE` u) ->
-          {auto 0 lte : t `LTE` n} -> minusLte n t `LTE` u
-lemmaNR n      Z      upper {lte = LTEZero} = upper
-lemmaNR Z      (S t') _ impossible
-lemmaNR (S n') (S t') upper {lte = LTESucc lte} =
-  lemmaNR n' t' (ltePred upper) {lte = lte}
-
--- FIXME: Can i generalize following function into "find minus operation
--- remainder with a proof, that it's indeed a remainder"?
-total
--- FIXME: `l` is not used.
--- FIXME: So, what will happen, if `u` is not bound in any way to `n`?
-rotrightNRec'2 : (n : Nat) -> {u : Nat} -> {auto upper : n `LTE` u} ->
-                 (xs : List a) -> {l : Nat} -> {auto 0 _ : l = length xs} -> List a
-rotrightNRec'2 Z xs = xs
-rotrightNRec'2 (S n') {u = S u'} {upper = LTESucc upper} [] = []
-rotrightNRec'2 (S n') {u = S u'} {upper = LTESucc upper} (x::xs') with (decEq (S n') (length (x::xs')))
-  _ | Yes _ = x::xs'
-  _ | No contra with (connex {rel = LTE} contra)
-    _ | Left lte = ?b3
-    _ | Right (LTESucc gt) with (minusLte (S n') (length (x::xs')) {lte = LTESucc gt}) proof 0 minusPrf
-      _ | r =
-        let upPrf = lemmaNR n' {u = u'} (length xs') upper {lte = gt}
-            rec = rotrightNRec'2 r (x::xs') {u = u'} {upper = rewrite sym minusPrf in ?b2}
-          in rec
-
-
--- This implementation is also worse, than Wadler's one, because Wadler has
--- only single full list traversal, but here is two.
-export
-rotleftRec : (xs : List a) -> List a
-rotleftRec [] = []
-rotleftRec (x::xs') = mySnocOutRec (MySnocRec (mySnocListRec xs') x)
-
--- So, here is an intresting difference: Wadler's version traverses full
--- list at each step of building MySnocList, but here i still traverse full
--- list only twice: first to build MySnocListRec, and then to rebuild it back
--- to list.
-export
-rotleft2Rec : (xs : List a) -> List a
-rotleft2Rec [] = []
-rotleft2Rec (x::xs') =
-  case xs' of
-       [] => [x]
-       (x'::rest) => mySnocOutRec (MySnocRec (MySnocRec (mySnocListRec rest) x) x')
-
-rotleftNRec : (n : Nat) -> (xs : List a) -> List a
---rotleftNRec Z xs = xs
---rotleftNRec (S t) (x::xs') =
-
--- Recursive view providing proofs at type level.
-data MySnocListRec' : List a -> Type where
-  MyNilSnocRec' : MySnocListRec' []
-  MySnocRec' : (rest : MySnocListRec' xs) -> (x : a) -> MySnocListRec' (xs ++ [x])
-
-mySnocListRec' : (xs : List a) -> MySnocListRec' xs
-mySnocListRec' xs = go xs MyNilSnocRec'
-  where
-    go : (xs : List a) -> (acc : MySnocListRec' ys) -> MySnocListRec' (ys ++ xs)
-    go [] acc = rewrite appendNilRightNeutral ys in acc
-    go (x::xs') acc =
-      rewrite appendAssociative ys [x] xs' in go xs' (MySnocRec' acc x)
-
--- xs is erased at runtime, but requires rebuild of a list.
-mySnocOutRec' : {0 xs : List a} -> MySnocListRec' xs -> List a
-mySnocOutRec' MyNilSnocRec' = []
-mySnocOutRec' (MySnocRec' rest x) = mySnocOutRec' rest ++ [x]
-
--- No rebuild, but xs is not erased.
-mySnocOutRec'1 : {xs : List a} -> MySnocListRec' xs -> List a
-mySnocOutRec'1 _ = xs
-
--- These implementations are exactly the same as for 'MySnocListRec', except
--- that here view refines patterns (though i don't need this).
-myLastRec' : (xs : List a) -> a
-myLastRec' xs with (mySnocListRec' xs)
-  myLastRec' [] | MyNilSnocRec' = ?undefLastRec'
-  myLastRec' (xs' ++ [x]) | MySnocRec' _ x = x
-
-rotrightRec' : (xs : List a) -> List a
-rotrightRec' xs = case (mySnocListRec' xs) of
-                   MyNilSnocRec' => []
-                   MySnocRec' rest x => x::(mySnocOutRec' rest)
-
-rotleftRec' : (xs : List a) -> List a
-rotleftRec' [] = []
-rotleftRec' (x::xs') = mySnocOutRec' (MySnocRec' (mySnocListRec' xs') x)
-
--- So, essentially, SnocList view as described by Wadler, where 'rest' in Snoc
--- view remains as cons-ed list, definitely has sense as demonstrated by
--- examples. View as `MySnocListRec'`, which refines patterns, also has sense,
--- because it refines patterns and may be used for type-level reasoning. But
--- view as 'MySnocListRec' has no sense at all, because it misses cons-ed
--- 'rest' from the Wadler's variant and misses pattern refiniment from the
--- Idris's SnocList.

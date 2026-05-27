@@ -11,6 +11,10 @@ data SnocVect : Vect n a -> Type where
   EmptyV : SnocVect []
   SnocV : (x : a) -> (xs : Vect m a) -> SnocVect xs -> SnocVect (xs ++ [x])
 
+export 
+Eq (SnocVect xs) where
+  _ == _ = True
+
 export
 vAppendNilRightNeutral : {0 n : Nat} -> (xs : Vect n a) ->
                          (rewrite sym (plusZeroRightNeutral n) in xs ++ []) = xs
