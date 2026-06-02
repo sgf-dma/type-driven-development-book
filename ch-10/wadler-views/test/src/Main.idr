@@ -6,7 +6,7 @@ import Data.List
 
 import Remainder
 import SnocVect
-import Lib
+import Ch5
 
 testRemainder : List Bool
 testRemainder =
