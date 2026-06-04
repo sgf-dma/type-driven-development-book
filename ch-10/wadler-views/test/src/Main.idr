@@ -8,6 +8,7 @@ import Remainder
 import SnocVect
 import Ch5
 import Ch6
+import Ch7
 
 testRemainder : List Bool
 testRemainder =
@@ -197,6 +198,22 @@ testJoinSnoc =
   , snocIn (snocOut (SSnoc (SSnoc (SSnoc SNil 1) 2) 3)) == (SSnoc (SSnoc (SSnoc SNil 1) 2) 3)
   ]
 
+testZipView : List Bool
+testZipView =
+  [ zipView (the (List (Int, Int)) []) == ZPair [] []
+  , zipView [(1, 2)] == ZPair [1] [2]
+  , zipView [(1, 2), (3, 4)] == ZPair [1,3] [2,4]
+  , zipView [(1, 2), (3, 4), (5, 6)] == ZPair [1,3,5] [2,4,6]
+  ]
+
+testZipVecView : List Bool
+testZipVecView =
+  [ zipVecView (the (Vect 0 (Int, Int)) []) == ZVecPair [] []
+  , zipVecView [(1, 2)] == ZVecPair [1] [2]
+  , zipVecView [(1, 2), (3, 4)] == ZVecPair [1,3] [2,4]
+  , zipVecView [(1, 2), (3, 4), (5, 6)] == ZVecPair [1,3,5] [2,4,6]
+  ]
+
 runTest : Show b => (name : String)
         -> (acc0 : a)
         -> (run : (acc : a) -> b -> Maybe a)
@@ -229,3 +246,5 @@ main = do
   runTest "testRotleftVec" () checkBool testRotleftVec
   runTest "testJoinCons" () checkBool testJoinCons
   runTest "testJoinSnoc" () checkBool testJoinSnoc
+  runTest "testZipView" () checkBool testZipView
+  runTest "testZipVecView" () checkBool testZipVecView
