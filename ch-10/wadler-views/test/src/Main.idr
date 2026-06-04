@@ -7,6 +7,7 @@ import Data.List
 import Remainder
 import SnocVect
 import Ch5
+import Ch6
 
 testRemainder : List Bool
 testRemainder =
@@ -175,6 +176,27 @@ testRotleftVec =
   , rotleftVecNRec3 6 [1,2,3] == rotleftVecNRec 6 [1,2,3]
   ]
 
+testJoinCons : List Bool
+testJoinCons =
+  [ consIn (consOut []) == the (List Int) []
+  , consIn (consOut [1]) == [1]
+  , consIn (consOut [1,2]) == [1,2]
+  , consIn (consOut [1,2,3]) == [1,2,3]
+
+  , consIn2 (consOut (the (List Int) [])) == []
+  , consIn2 (consOut [1]) == [1]
+  , consIn2 (consOut [1,2]) == [1,2]
+  , consIn2 (consOut [1,2,3]) == [1,2,3]
+  ]
+
+testJoinSnoc : List Bool
+testJoinSnoc =
+  [ snocIn (snocOut SNil) == the (SnocL Int) SNil
+  , snocIn (snocOut (SSnoc SNil 1)) == (SSnoc SNil 1)
+  , snocIn (snocOut (SSnoc (SSnoc SNil 1) 2)) == (SSnoc (SSnoc SNil 1) 2)
+  , snocIn (snocOut (SSnoc (SSnoc (SSnoc SNil 1) 2) 3)) == (SSnoc (SSnoc (SSnoc SNil 1) 2) 3)
+  ]
+
 runTest : Show b => (name : String)
         -> (acc0 : a)
         -> (run : (acc : a) -> b -> Maybe a)
@@ -205,3 +227,5 @@ main = do
   runTest "testRotrightVec" () checkBool testRotrightVec
   runTest "testRotleftList" () checkBool testRotleftList
   runTest "testRotleftVec" () checkBool testRotleftVec
+  runTest "testJoinCons" () checkBool testJoinCons
+  runTest "testJoinSnoc" () checkBool testJoinSnoc
