@@ -9,6 +9,7 @@ import SnocVect
 import Ch5
 import Ch6
 import Ch7
+import Ch8
 
 testRemainder : List Bool
 testRemainder =
@@ -214,6 +215,56 @@ testZipVecView =
   , zipVecView [(1, 2), (3, 4), (5, 6)] == ZVecPair [1,3,5] [2,4,6]
   ]
 
+tree1 : Tree String
+tree1 = Branch (Branch (Leaf "f") (Leaf "a")) (Leaf "b")
+
+tree2 : Tree String
+tree2 = Branch (Leaf "f") (Leaf "a")
+
+tree3 : Tree String
+tree3 = Branch (Leaf "f") (Branch (Leaf "a") (Leaf "b"))
+
+tree4 : Tree String
+tree4 = Branch (Branch (Branch (Leaf "f") (Leaf "a")) (Branch (Leaf "c") (Leaf "d"))) (Leaf "b")
+
+testTrees : List Bool
+testTrees =
+  [
+    spineToTree (treeToSpine tree1) == tree1
+  , spineToTree (treeToSpine tree2) == tree2
+  , spineToTree (treeToSpine tree3) == tree3
+  , spineToTree (treeToSpine tree4) == tree4
+
+  , spineToTree4' (treeToSpine4 tree1) == tree1
+  , spineToTree4' (treeToSpine4 tree2) == tree2
+  , spineToTree4' (treeToSpine4 tree3) == tree3
+  , spineToTree4' (treeToSpine4 tree4) == tree4
+
+  , spineToTree4 (treeToSpine4 tree1) == tree1
+  , spineToTree4 (treeToSpine4 tree2) == tree2
+  , spineToTree4 (treeToSpine4 tree3) == tree3
+  , spineToTree4 (treeToSpine4 tree4) == tree4
+
+  , spineTree4_1 (treeToSpine4 tree1) == treeToSpine tree1
+  , spineTree4_1 (treeToSpine4 tree2) == treeToSpine tree2
+  , spineTree4_1 (treeToSpine4 tree3) == treeToSpine tree3
+  , spineTree4_1 (treeToSpine4 tree4) == treeToSpine tree4
+
+  , fst (spineTree1_4 (treeToSpine tree1)) == tree1
+  , fst (spineTree1_4 (treeToSpine tree2)) == tree2
+  , fst (spineTree1_4 (treeToSpine tree3)) == tree3
+  , fst (spineTree1_4 (treeToSpine tree4)) == tree4
+
+  -- I don't need to check snd, like
+  --    snd (spineTree1_4 (treeToSpine tree1)) == treeToSpine4 tree1
+  -- first, because it won't work, because it needs decidable equality.
+  -- Second, dependent pair (returned by spineTree1_4) guarantees, that Spine4 in
+  -- second element matches to Tree in the first and my Eq instance for Spine4
+  -- tells, that if types are equal, values are also equal. So, by comparing
+  -- first element with reference Tree, i check whether types are equal. And
+  -- there's no need to also check the values.
+  ]
+
 runTest : Show b => (name : String)
         -> (acc0 : a)
         -> (run : (acc : a) -> b -> Maybe a)
@@ -248,3 +299,4 @@ main = do
   runTest "testJoinSnoc" () checkBool testJoinSnoc
   runTest "testZipView" () checkBool testZipView
   runTest "testZipVecView" () checkBool testZipVecView
+  runTest "testTrees" () checkBool testTrees

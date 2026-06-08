@@ -16,11 +16,13 @@ import SnocVect
 
 -- Note the difference from 'Data.List.Views.SnocList': this one is not
 -- recursive and type parameter is not a List, but list element's type.
+public export
 data MySnocList : Type -> Type where
   MyNilSnoc : MySnocList a
   MySnoc : (rest : List a) -> (x : a) -> MySnocList a
 
 -- Full list traversal, linear time.
+export
 mySnocList : List a -> MySnocList a
 mySnocList [] = MyNilSnoc
 mySnocList (x::xs) =
@@ -29,6 +31,7 @@ mySnocList (x::xs) =
        MySnoc rest x' => MySnoc (x::rest) x'
 
 -- Full list traversal, linear time.
+export
 mySnocOut : MySnocList a -> List a
 mySnocOut MyNilSnoc = []
 mySnocOut (MySnoc [] x') = [x']
@@ -90,6 +93,7 @@ rotleftN (S t) xs = rotleftN t (rotleft xs)
 
 -- Recursive version of MySnocList. Still, type parameter is not a List, but
 -- list element's type.
+public export
 data MySnocListRec : Type -> Type where
   MyNilSnocRec : MySnocListRec a
   MySnocRec : (rest : MySnocListRec a) -> (x : a) -> MySnocListRec a
