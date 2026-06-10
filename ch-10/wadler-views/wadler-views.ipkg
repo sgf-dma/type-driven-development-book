@@ -16,7 +16,7 @@ authors = "sgf"
 -- depends =
 
 -- modules to install
-modules = Ch2_3, Ch5, Ch6, Ch7, Ch8, Remainder, SnocVect
+modules = Ch2_3, Ch5, Ch6, Ch7, Ch8, Ch9, Remainder, SnocVect
 
 -- main file (i.e. file to load at REPL)
 -- main =

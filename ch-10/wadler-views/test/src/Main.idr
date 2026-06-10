@@ -10,6 +10,7 @@ import Ch5
 import Ch6
 import Ch7
 import Ch8
+import Ch9
 
 testRemainder : List Bool
 testRemainder =
@@ -265,6 +266,16 @@ testTrees =
   -- there's no need to also check the values.
   ]
 
+testParity : List Bool
+testParity =
+  [ parity 0 == Even
+  , parity 1 == Odd
+  , parity 2 == Even {k = 1}
+  , parity 3 == Odd {k = 1}
+  , parity 4 == Even {k = 2}
+  , parity 5 == Odd {k = 2}
+  ]
+
 runTest : Show b => (name : String)
         -> (acc0 : a)
         -> (run : (acc : a) -> b -> Maybe a)
@@ -300,3 +311,4 @@ main = do
   runTest "testZipView" () checkBool testZipView
   runTest "testZipVecView" () checkBool testZipVecView
   runTest "testTrees" () checkBool testTrees
+  runTest "testParity" () checkBool testParity
