@@ -74,3 +74,21 @@ parity (S t) =
                                     ...(rewrite plusZeroRightNeutral (k + 0) in Refl)
                     in rewrite prf in rr
 
+-- Or much simpler version..
+export
+parity2 : (x : Nat) -> Parity x
+parity2 Z = Even
+parity2 (S Z) = Odd
+parity2 (S (S t)) =
+  case parity t of
+       Even {k} => rewrite plusSuccRightSucc k (k + 0) in Even {k = S k}
+       Odd {k}  => let rr = Odd {k = S k}
+                       -- This proof is needed, because 'S' in first `plus`
+                       -- argument is automatically moved to the left by Idris
+                       -- and i can't use `plusSuccRightSucc` directly.
+                       prf : S (S (k + (k + 0)) + 1) === S ((k + S (k + 0)) + 1)
+                       prf = Calc $
+                              |~ S (S (k + (k + 0)) + 1)
+                              ~~ S ((k + S (k + 0)) + 1)
+                                      ...(rewrite sym (plusSuccRightSucc k (k + 0)) in Refl)
+                    in rewrite prf in rr

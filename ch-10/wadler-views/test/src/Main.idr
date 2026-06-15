@@ -274,6 +274,13 @@ testParity =
   , parity 3 == Odd {k = 1}
   , parity 4 == Even {k = 2}
   , parity 5 == Odd {k = 2}
+
+  , parity2 0 == Even
+  , parity2 1 == Odd
+  , parity2 2 == Even {k = 1}
+  , parity2 3 == Odd {k = 1}
+  , parity2 4 == Even {k = 2}
+  , parity2 5 == Odd {k = 2}
   ]
 
 runTest : Show b => (name : String)
