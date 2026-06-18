@@ -11,6 +11,7 @@ import Ch6
 import Ch7
 import Ch8
 import Ch9
+import Ch12
 
 testRemainder : List Bool
 testRemainder =
@@ -283,6 +284,44 @@ testParity =
   , parity2 5 == Odd {k = 2}
   ]
 
+testFib : List Bool
+testFib =
+  [ fibVc 0 == 0
+  , fibVc 1 == 1
+  , fibVc 2 == 1
+  , fibVc 3 == 2
+  , fibVc 4 == 3
+  , fibVc 9 == 34
+
+  , fibx 0 1 0 == 0
+  , fibx 0 1 1 == 1
+  , fibx 0 1 2 == 1
+  , fibx 0 1 3 == 2
+  , fibx 0 1 4 == 3
+  , fibx 0 1 9 == 34
+
+  , fibxVc 0 1 0 == 0
+  , fibxVc 0 1 1 == 1
+  , fibxVc 0 1 2 == 1
+  , fibxVc 0 1 3 == 2
+  , fibxVc 0 1 4 == 3
+  , fibxVc 0 1 9 == 34
+
+  , fibxVc2 0 1 0 == 0
+  , fibxVc2 0 1 1 == 1
+  , fibxVc2 0 1 2 == 1
+  , fibxVc2 0 1 3 == 2
+  , fibxVc2 0 1 4 == 3
+  , fibxVc2 0 1 9 == 34
+
+  , fibxVc2L 0 1 0 == 0
+  , fibxVc2L 0 1 1 == 1
+  , fibxVc2L 0 1 2 == 1
+  , fibxVc2L 0 1 3 == 2
+  , fibxVc2L 0 1 4 == 3
+  , fibxVc2L 0 1 9 == 34
+  ]
+
 runTest : Show b => (name : String)
         -> (acc0 : a)
         -> (run : (acc : a) -> b -> Maybe a)
@@ -319,3 +358,4 @@ main = do
   runTest "testZipVecView" () checkBool testZipVecView
   runTest "testTrees" () checkBool testTrees
   runTest "testParity" () checkBool testParity
+  runTest "testFib" () checkBool testFib

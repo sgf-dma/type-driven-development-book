@@ -19,6 +19,7 @@ viewout Zero = 0
 viewout (Succ n) = n + 1
 
 partial
+export
 fib : (m : Int) -> Int
 fib m =
   case viewin m of
