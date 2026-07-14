@@ -19,7 +19,7 @@ authors = "sgf"
 modules = Lib, Divides
 
 -- main file (i.e. file to load at REPL)
--- main =
+main = Main.idr
 
 -- name of executable
 -- executable =

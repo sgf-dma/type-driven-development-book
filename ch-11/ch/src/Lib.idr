@@ -5,6 +5,7 @@ import Data.Stream
 import Data.List
 import Data.Fin
 import Data.Nat
+import Data.String
 import Data.Primitives.Views
 import Divides
 
@@ -228,11 +229,14 @@ partial export
 foreverFuel : Fuel
 foreverFuel = More foreverFuel
 
-(>>=) : IO a -> (a -> Inf InfIO) -> InfIO
-(>>=) = Do
+namespace InfIODo
+  export
+  (>>=) : IO a -> (a -> Inf InfIO) -> InfIO
+  (>>=) = Do
 
-(>>) : IO a -> Inf InfIO -> InfIO
-(>>) mx mb = Do mx (\_ => mb)
+  export
+  (>>) : IO a -> Inf InfIO -> InfIO
+  (>>) mx mb = Do mx (\_ => mb)
 
 loopPrint' : String -> InfIO
 loopPrint' msg = do
@@ -252,3 +256,77 @@ quiz2Inf score (n1 :: n2 :: nums)
           else do putStrLn ("Wrong, the answer is " ++ show rightAnswer)
                   quiz2Inf score nums
 
+-- 11.3
+
+data Command : Type -> Type where
+  PutStr : String -> Command ()
+  GetLine : Command String
+
+  Pure : ty -> Command ty
+  Bind : Command a -> (a -> Command b) -> Command b
+
+namespace CommandDo
+  export
+  (>>=) : Command a -> (a -> Command b) -> Command b
+  (>>=) = Bind
+  export
+  (>>) : Command a -> Command b -> Command b
+  (>>) ma mb = ma >>= (\_ => mb)
+
+runCommand : Command a -> IO a
+runCommand (PutStr x) = putStr x
+runCommand GetLine = getLine
+runCommand (Pure x) = pure x
+runCommand (Bind c f) = runCommand c >>= \x => runCommand (f x)
+
+data ConsoleIO : Type -> Type where
+  Quit : a -> ConsoleIO a
+  CDo : Command a -> (a -> Inf (ConsoleIO b)) -> ConsoleIO b
+
+namespace ConsoleDo
+  export
+  run : Fuel -> ConsoleIO a -> IO (Maybe a)
+  run fuel (Quit val) = do pure (Just val)
+  run (More fuel) (CDo c f) = do
+    res <- runCommand c
+    run fuel (f res)
+  run Dry p = pure Nothing
+
+  export
+  (>>=) : Command a -> (a -> Inf (ConsoleIO b)) -> ConsoleIO b
+  (>>=) = CDo
+  export
+  (>>) : Command a -> Inf (ConsoleIO b) -> ConsoleIO b
+  (>>) ma mb = ma >>= (\_ => mb)
+
+data Input = Answer Int | QuitCmd
+
+readInput : (prompt : String) -> Command Input
+readInput prompt = do
+  PutStr prompt
+  answer <- GetLine
+  if toLower answer == "quit"
+     then Pure QuitCmd
+     else Pure (Answer (cast answer))
+
+mutual
+  correct : Stream Int -> (score : Nat) -> ConsoleIO Nat
+  correct nums score = do
+    PutStr "Correct!\n"
+    quiz3 nums (score + 1)
+
+  wrong : Stream Int -> Int -> (score : Nat) -> ConsoleIO Nat
+  wrong nums ans score = do
+    PutStr ("Wrong, the answer is " ++ show ans ++ "\n")
+    quiz3 nums score
+
+  quiz3 : Stream Int -> (score : Nat) -> ConsoleIO Nat
+  quiz3 (num1 :: num2 :: nums) score = do
+    PutStr ("Score so far: " ++ show score ++ "\n")
+    answer <- readInput (show num1 ++ " * " ++ show num2 ++ "? ")
+    case answer of
+         Answer answer =>
+                    if answer == num1 * num2
+                       then correct nums score
+                       else wrong nums (num1 * num2) score
+         QuitCmd => Quit score
