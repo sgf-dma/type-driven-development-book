@@ -36,6 +36,21 @@ traverse f (Node left val right) = do
   f (Just val)
   traverse f right
 
+traverse' : Monad m => (f : Maybe a -> m (Maybe b)) -> Tree a -> m (Tree b)
+traverse' f Empty = do
+  mVal' <- f Nothing
+  case mVal' of
+       Nothing => pure Empty
+       (Just x) => pure (Node Empty x Empty)
+traverse' f (Node left val right) = do
+  left <- traverse' f left
+  mVal' <- f (Just val)
+  case mVal' of
+       Nothing => pure Empty
+       (Just x) => do
+          right <- traverse' f right
+          pure (Node left x right)
+
 export
 countEmpty2 : Tree a -> State Nat ()
 countEmpty2 = traverse $ \mval => case mval of
