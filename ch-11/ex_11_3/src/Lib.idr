@@ -322,6 +322,13 @@ loop1' : Nat -> Do1 Nat
 loop1' Z = Pure1 Z
 loop1' (S t) = Bind1 (Pure1 t) (\_ => loop1' t)
 
+-- Changing type in Bind continuation, all works as expected. Finite function.
+total
+func1 : Nat -> Do1 Nat
+func1 x = do
+  s <- Pure1 (the String "a")
+  Pure1 x
+
 -- But if i add `Inf` type annotation for continuation in 'Bind'..
 data Do2 : Type -> Type where
   -- Note the type of continuation's resulting value: it's the same as
@@ -385,7 +392,7 @@ run2' _ (Pure2 x) = pure x
 -- arguments.
 -- Also, note, that if continuation changes the type (i.e. has the type `a -> Do2 b`,
 -- as it should) i can't call `run2' Dry mx` here, because it returns value
--- of type `Do2 a`, but i need `Do2 b`.
+-- of type `Do2 a`, but i need `Do2 b`. (see below for several ways to fix this)
 run2' Dry (Bind2 mx f) = run2' Dry mx
 run2' (More fuel) (Bind2 mx f) = do
   -- And here i'm also calling `run` _without_ decreasing fuel, because
@@ -396,7 +403,24 @@ run2' (More fuel) (Bind2 mx f) = do
   -- therefore i need to decrease fuel by one.
   run2' fuel (f x)
 
--- And this is version of `Do2` with continuation changing the resulting type
+-- Following won't typecheck regardless of resulting type, because Bind2
+-- continuation can not change return type.
+--total
+--loop2'3 : Nat -> Do2 Nat
+----loop2'3 : Nat -> Do2 String
+--loop2'3 x = do
+--  s  <- Pure2 (the String "a")
+--  x' <- Pure2 x
+--  loop2'3 x'
+
+--total
+--func2 : Nat -> Do2 Nat
+--func2 x = do
+--  s <- Pure2 (the String "a")
+--  Pure2 x
+
+
+-- This is version of `Do2` with continuation changing the resulting type
 -- (as it was in `Do1`).
 data Do3 : Type -> Type where
   Bind3 : Do3 a -> (a -> Inf (Do3 b)) -> Do3 b
@@ -404,7 +428,7 @@ data Do3 : Type -> Type where
 
 namespace Do3ns
   export
-  (>>=) : Do3 a -> (a -> Do3 b) -> Do3 b
+  (>>=) : Do3 a -> (a -> Inf (Do3 b)) -> Do3 b
   mx >>= f = Bind3 mx (\x => f x)
   export
   (>>) : Do3 a -> Do3 b -> Do3 b
@@ -427,11 +451,125 @@ total
 loop3 : Nat -> Do3 Nat
 loop3 x = Bind3 (Pure3 x) (\_ => loop3 x)
 
+-- Typechecks with both resulting types, as expected.
+total
+loop3'3 : Nat -> Do3 Nat
+--loop3'3 : Nat -> Do3 String
+loop3'3 x = do
+  s <- Pure3 "a"
+  x' <- Pure3 x
+  loop3'3 x'
+
+total
+func3 : Nat -> Do3 Nat
+func3 x = do
+  s <- Pure3 (the String "a")
+  Pure3 x
+
+data T : Nat -> Type where
+  MkT : {x : Nat} -> T x
+
+-- Won't typecheck, because hole 'x' in `MkT` can't be solved.
+--func3' : {x : Nat} -> Do3 Nat
+--func3' = do
+--  x <- Pure3 MkT
+--  func3 1
+
+-- I may fix this by binding hole 'x' in `MkT` to the result type. But
+-- to actually make use of this trick, i need an infinite function, where
+-- result value will never be reached and can be of any type. The same trick
+-- is used in v4, but there it'll be embedded into `run` itself.
+loop3'4 : {x : Nat} -> Do3 (T x)
+loop3'4 = do
+  -- Hole 'x' in `MkT` is derived from final result type `T x`.
+  y <- Pure3 MkT
+  loop3'3 1
+  -- Will never be reached and used only for solving hole 'x' in `MkT`.
+  Pure3 y
+
+
+-- And here is another way to fix Do2:
+-- First, make the type to be always infinite (remove `Pure` constructor)..
+data Do4 : Type -> Type where
+  -- ..Then return value of `Bind` won't matter, because it will never be
+  -- reached, so i'm free to use any resulting value. And i'll use initial
+  -- type 'a' for final result, because it fixes `Dry Bind..` case in run (see
+  -- run2') and allows to solving holes in initial values (see loop3'4).
+  Bind4 : IO a -> (a -> Inf (Do4 b)) -> Do4 a
+  -- Note, that if type is really infinite, there is no sense in making first
+  -- Bind argument of type `Do a`, because i can't construct `Do` value
+  -- anyway. So, i may choose any other type for the first argument: e.g. IO
+  -- or some domain-specific `Cmd`-like type.
+
+namespace Do4
+  export
+  (>>=) : IO a -> (a -> Inf (Do4 b)) -> Do4 a
+  (>>=) = Bind4
+  export
+  (>>) : IO a -> Inf (Do4 b) -> Do4 a
+  (>>) ma mb = ma >>= (\_ => mb)
+
+total
+run4 : Fuel -> Do4 a -> IO a
+-- Here is the first reason, why i need final result to be of the same type as
+-- initial value: to make `Dry Bind..` case typecheck as was in v2.
+run4 Dry (Bind4 mx _) = mx
+run4 (More fuel) (Bind4 mx f) = do
+  x <- mx
+  -- `run`-ning continuation returns value of type `b`..
+  _ <- run4 fuel (f x)
+  -- ..but i need result to be of type `a`, so, just discard it and return value
+  -- of correct type. I'll never reach this anyway, because continuation is
+  -- infinite, so it does not matter.
+  pure x
+
+total
+loop4 : Nat -> Do4 Nat
+loop4 x = Bind4 (pure x) (\_ => loop4 x)
+
+total
+-- Won't type check with such result type, because first Bind argument has
+-- type `Do4 String` and so should the overall function.
+--loop4'3 : Nat -> Do4 Nat
+-- But this typechecks successfully, and because function is infinite it does
+-- not matter anyway which result type to specify.
+loop4'3 : Nat -> Do4 String
+loop4'3 x = do
+  s <- pure (the String "a")
+  x' <- pure x
+  loop4'3 x'
+
+-- This is not an infinite function and it won't typecheck. The same is for
+-- func3' version.
+--func4 : Nat -> Do4 String
+--func4 x = do
+--  s <- pure (the String "a")
+--  pure x
+
+loop4'4 : {x : Nat} -> Do4 (T x)
+loop4'4 = do
+  -- Hole 'x' in `MkT` is derived from final result type `T x`.
+  _ <- pure MkT
+  loop4'3 1
+
+
 -- So, the bottom line is:
 -- - If i need to make real infinite function generating value of some type, i
 -- need to use `Inf` on the corresponding type constructor argument and i need
 -- `Fuel` in `run`.
 -- - If i don't need infinite functions, i do need neither `Inf`, nor `Fuel`.
+-- - It may make sense to split infinite values into separate _infinite_ type,
+-- like `Do4` (i.e. types, which may only have infinite values). Then
+-- resulting type of `Bind` (which will never be reached, because value is
+-- infinite) may be used for solving holes in the first value of bind chain.
+-- And this first argument of Bind should be of some (finite) DSL-like type.
+-- Then function will look like:
+--
+--      f = do
+--            finite_constructor
+--            ..
+--            finite_constructor
+--            f
 --
 -- So, designing of DSL `Do`-like types should start from actual function(s),
 -- but not from `Do`-like type and `run` definitions.

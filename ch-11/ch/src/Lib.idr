@@ -33,6 +33,24 @@ getPrefix Z _ = []
 --getPrefix (S k) (v::infvs) = v :: getPrefix k (Force infvs)
 getPrefix (S k) (v::infvs) = v :: getPrefix k infvs
 
+-- Infinite data type _may_ be finite, like this one. And this does not break
+-- "productive" claim just because i still need to cover all well-typed
+-- inputs. So, in `getPrefix` i need to somehow handle Nil.
+-- In other words, `Inf` just makes really infinite values possible in total
+-- functions, but does not restrict data type to e.g. only infinite values.
+data InfList' : Type -> Type where
+  Nil' : InfList' a
+  Cons' : (val : a) -> Inf (InfList' a) -> InfList' a
+
+total
+countFrom2' : Integer -> InfList' Integer
+countFrom2' n = Cons' n (countFrom2' (n + 1))
+
+getPrefix' : (count : Nat) -> InfList' a -> List a
+getPrefix' Z _ = []
+getPrefix' (S k) Nil' = []
+getPrefix' (S k) (Cons' v infvs) = v :: getPrefix' k infvs
+
 total
 labelWith : (labels : Stream a) -> (values : List b) -> List (a, b)
 labelWith _ [] = []
