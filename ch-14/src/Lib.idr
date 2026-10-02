@@ -248,24 +248,23 @@ namespace ATMCmd
   (>>) : ATMCmd () s1 f1 -> ATMCmd b (f1 ()) f2 -> ATMCmd b s1 f2
   mx >> my = BindATM mx (\() => my)
 
-g : {0 n : Nat} -> Fin n -> Int
-g FZ = 1
-g {n = S n'} (FS k) with (weaken k)
-  _ | FZ = g {n = S n'} FZ
-  _ | FS k' = ?c2
-
 --g {n = .(S (S n'))} (FS FZ) = g {n = (S n')} FZ
 --g {n = .(S (S n'))} (FS (FS k)) = ?a2 -- g {n} (FS (weaken k))
 
 0 foo : (x : Maybe a) -> IsJust x -> a
 foo (Just x) ItIsJust = x
 
---atm2 : {0 left : Fin n} -> ATMCmd () (PinAttempts {maxRetries = n} left) (const Ready)
-atm2 : {left : Fin n} -> ATMCmd () (PinAttempts left) (const Ready)
-atm2 {left = FZ} = do
+total
+finToNatWeakNeutral : (t : Fin n) -> finToNat (weaken t) = finToNat t
+finToNatWeakNeutral FZ = Refl
+finToNatWeakNeutral (FS t') = cong S (finToNatWeakNeutral t')
+
+total
+atm2 : {left : Fin n} -> {l : Nat} -> {auto prf : l = finToNat left} -> ATMCmd () (PinAttempts left) (const Ready)
+atm2 {left = FZ} {l = Z} = do
   Message "No retries left."
   EjectCard
-atm2 {left = FS k} = do
+atm2 {left = FS k} {l = S l'} {prf} = do
   pin <- GetPin
   r <- CheckPin pin
   case r of
@@ -276,14 +275,17 @@ atm2 {left = FS k} = do
          EjectCard
        Wrong => do
          Message "Wrong pin."
-         ?a1
-         --atm2 {left = weaken k}
+         let r = atm2 {left = weaken k} {l = l'}
+                      {prf = rewrite (injective prf) in
+                             rewrite (finToNatWeakNeutral k) in
+                                     Refl}
+         r
 
-partial
+total
 atm : ATMCmd () Ready (const Ready)
 atm = do
   InsertCard
-  atm2 {left = 3}
+  atm2 {left = 3} {l = 3}
 
 readPin : (n : Nat) -> Vect m Nat -> IO (Vect (n+m) Nat)
 -- I'll save pin in reverse, as i read it. And reverse only once at the
