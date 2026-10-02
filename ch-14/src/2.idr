@@ -18,36 +18,69 @@ f2 (x::xs') {l = S l'} =
   in r
   -}
 
+-- Let's take simple recursive function, which is obviously total:
 total
 g0 : {0 n : Nat} -> Fin n -> Int
 g0 FZ = 1
 g0 {n = S n'} (FS t) = g0 t
 
--- f1 does not change argument.
+-- And some other function, which (now) does nothing to its argument.
 total
 f1 : Nat -> Nat
 f1 Z = Z
 f1 (S t) = S t
 
+-- Then applying `f1` to `g1`'s argument in recursive calls makes `g1` to no
+-- longer be total.
 partial
 g1 : Nat -> Int
 g1 Z = 1
 g1 (S k) = g1 (f1 k)
 
+-- Matching on `f1`'s argument in `g1` does not help.
 partial
 g1' : Nat -> Int
 g1' Z = 1
 g1' (S Z) = g1' (f1 Z)
 g1' (S (S t)) = g1' (f1 (S t))
 
--- This is essentially `f1` written as type. It should be read from right to
--- left:
+-- So, generally, there're two strategies to fix this:
+--  - use decreasing metric. It may be implemented using recursive view,
+--  where decreasing metric will be recursive view's argument,
+--  - or use a view refining part of original argument and then use refined
+--  part as argument to recursive call. In this case, view just proves, that
+--  this part of original argument is indeed the result of nested function
+--  call on g1's argument.
+--
+-- The first method is probably better, the second is more tricky and awkward.
+
+total
+g1a : (n : Nat) -> {l : Nat} -> {auto prf : n = l} -> Int
+g1a Z = 1
+g1a (S k) {l = S Z} {prf = prf} =
+  let p' = injective prf
+      -- Now `l` guarantees totality and `f1 k` argument does not matter in
+      -- totality caluclations. It may be any.
+      r = g1a (f1 k) {l = Z} {prf = rewrite p' in Refl}
+  in r
+g1a (S k) {l = S (S t)} {prf = prf} =
+  let p' = injective prf
+      r = g1a (f1 k) {l = S t} {prf = rewrite p' in Refl}
+  in r
+
+-- For a view to refine original function's argument, it must have a type
+-- dependent on original argument value. That way matching on a constructor
+-- will refine type argument, which in turn will refine original function's
+-- argument itself.
+--
+-- Here view is essentially `f1` written as type. It should be read from right
+-- to left:
 --
 --      MkZ <- F1 Z
 --      ...
 --       Z  =  f1 Z
 --
--- is
+-- is branch
 --
 --      f1 Z = Z
 --
@@ -57,7 +90,7 @@ g1' (S (S t)) = g1' (f1 (S t))
 --      ............
 --          S t        = f1 (S t)
 --
--- is
+-- is branch
 --
 --      f1 (S t) = S t
 --
@@ -70,28 +103,19 @@ viewF1 Z = MkZ
 viewF1 (S t) = MkS t
 
 total
-g1a : Nat -> Int
-g1a Z = 1
-g1a (S k) with (viewF1 k)
-  g1a (S Z) | MkZ = g1a 0
-  -- View _refines_ original argument and here by calling `g1a` with _refined
-  -- (part of) original argument_ i essentially translate back from the view
-  -- (i.e. result of function `f1`) to (part of) original argument.
-  g1a (S (S t)) | MkS t = g1a (S t)
-
-total
-g1b : (n : Nat) -> {l : Nat} -> {auto prf : n = l} -> Int
+g1b : Nat -> Int
 g1b Z = 1
-g1b (S k) {l = S Z} {prf = prf} =
-  let p' = injective prf
-      r = g1b (f1 k) {l = Z} {prf = rewrite p' in Refl}
-  in r
-g1b (S k) {l = S (S t)} {prf = prf} =
-  let p' = injective prf
-      r = g1b (f1 k) {l = S t} {prf = rewrite p' in Refl}
-  in r
+g1b (S k) with (viewF1 k)
+  g1b (S Z) | MkZ = g1b 0
+  -- View _refined_ original argument and here by calling `g1b` with _refined
+  -- part of original argument_ i essentially translate back from the view
+  -- (i.e. result of function `f1`) to the (part of) original argument.
+  --
+  -- Here the problem is solved by essentially eliminating nested function
+  -- call `f1 k` and substituting its result on its place.
+  g1b (S (S t)) | MkS t = g1b (S t)
 
--- f2 changes argument.
+-- Now, f2 changes its argument.
 total
 f2 : Nat -> Nat
 f2 Z = Z
@@ -104,28 +128,48 @@ g2 : Nat -> Int
 g2 Z = 1
 g2 (S k) = g2 (f2 k)
 
--- View definition should represent function: function's argument is type
--- argument, constructor with its arguments is resulting value. I.e. Mk2Z0 is
--- 0 from `Z` branch, Mk2Z1 is 0 from `S Z` branch, and `Mk2S t` is `S t`
--- from `S (S t)` branch.
+total
+g2a : (n : Nat) -> {l : Nat} -> {auto prf : n = l} -> Int
+g2a Z = 1
+g2a (S Z) {l = S Z} {prf} = g2a Z
+g2a (S (S Z)) {l = S (S Z)} {prf} = g2a (S Z)
+g2a (S (S (S n'))) {l = S (S (S l'))} {prf} =
+  -- Value of `l` should be the result of nested function call `f2 k`,
+  -- otherwise i can't construct a proof. So in this aspect this method does
+  -- not differ from "view" method: i should construct a result of nested
+  -- function call by some way and it should be visible to Idris, that it's
+  -- smaller.
+  let r = g2a (f2 (S (S n'))) {l = (S l')}
+              {prf = rewrite injective (injective prf) in
+                             Refl}
+  in r
+
+-- Again, read view type definition from right to left and data constructors
+-- will match to `f2` branches. I have two different `Z` values here, but that
+-- does not matter.
 data F2 : Nat -> Type where
   Mk2Z0 : F2 Z
   Mk2Z1 : F2 (S Z)
+  -- S    t        =  f2 (S (S t))
   Mk2S : (t : Nat) -> F2 (S (S t))
 
 viewF2 : (n : Nat) -> F2 n
 viewF2 Z = Mk2Z0
 viewF2 (S Z) = Mk2Z1
+--  f2 (S (S t)) =    S t
 viewF2 (S (S t)) = Mk2S t
 
 total
-g2a : Nat -> Int
-g2a Z = 1
-g2a (S k) with (viewF2 k)
-  g2a (S Z) | Mk2Z0 = g2a 0
-  g2a (S (S Z)) | Mk2Z1 = g2a 1
-  g2a (S (S (S t))) | Mk2S t = g2a (S t)
+g2b : Nat -> Int
+g2b Z = 1
+g2b (S k) with (viewF2 k)
+  g2b (S Z) | Mk2Z0 = g2b 0
+  g2b (S (S Z)) | Mk2Z1 = g2b 1
+  g2b (S (S (S t))) | Mk2S t = g2b (S t)
 
+-- And now recursive function. The main difference of recursive function from
+-- previous two is that now result can't be directly calculated, because it
+-- contains recursive call.
 total
 f3 : Nat -> Nat
 f3 Z = Z
@@ -136,6 +180,16 @@ partial
 g3 : Nat -> Int
 g3 Z = 1
 g3 (S k) = g3 (f3 k)
+
+total
+g3a : (n : Nat) -> {l : Nat} -> {auto prf1 : l = n} -> {auto prf2 : n = f3 (S n)} -> Int
+g3a Z {l = Z} = 1
+g3a (S Z) {l = S Z} = g3a Z
+g3a (S (S n')) {l = S (S l')} {prf1} {prf2} =
+  let r = g3a (f3 (S n')) {l = l'}
+              {prf1 = rewrite injective (injective prf1) in injective (injective prf2)}
+              {prf2 = rewrite sym (injective prf2) in Refl}
+  in r
 
 data F3 : Nat -> Type where
   Mk3Z0 : F3 Z
@@ -149,30 +203,30 @@ viewF3 (S (S t)) = Mk3S (viewF3 (S t))
 
 -- Incorrect version.
 total
-g3a' : Nat -> Int
-g3a' Z = 1
-g3a' (S k) with (viewF3 k)
-  g3a' (S Z) | Mk3Z0 = g3a' 0
-  g3a' (S (S Z)) | Mk3Z1 = g3a' 0
+g3b' : Nat -> Int
+g3b' Z = 1
+g3b' (S k) with (viewF3 k)
+  g3b' (S Z) | Mk3Z0 = g3b' 0
+  g3b' (S (S Z)) | Mk3Z1 = g3b' 0
   -- Both typechecks:
   --
-  --g3a' (S (S (S t))) | Mk3S rec = g3a' (S (S t))
+  --g3b' (S (S (S t))) | Mk3S rec = g3b' (S (S t))
   --
   -- and this is expected, because view just refined original argument, and i
   -- use (part of) original argument in recursive call.
-  g3a' (S (S (S t))) | Mk3S rec = g3a' (S t)
+  g3b' (S (S (S t))) | Mk3S rec = g3b' (S t)
 
 -- Correct version.
 total
-g3a : Nat -> Int
-g3a n with (viewF3 n)
-  g3a Z | Mk3Z0 = 1
-  g3a (S Z) | Mk3Z1 = 1
+g3b : Nat -> Int
+g3b n with (viewF3 n)
+  g3b Z | Mk3Z0 = 1
+  g3b (S Z) | Mk3Z1 = 1
   -- But here the logic of original `g3` is preserved: i call `g3` recursively
   -- with `F3` recursive argument. And actual number passed to `g3` does not
   -- really matters: `F3` recursive argument restricts this number to
   -- correct value only!
-  g3a (S (S t)) | Mk3S rec = g3a (S t) | rec
+  g3b (S (S t)) | Mk3S rec = g3b (S t) | rec
 
 --total
 --f4 : (n : Nat) -> Fin n
