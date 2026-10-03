@@ -2,6 +2,7 @@
 import Data.Fin
 import Data.Vect
 import Data.List
+import Decidable.Equality
 
 {-
 total
@@ -181,14 +182,108 @@ g3 : Nat -> Int
 g3 Z = 1
 g3 (S k) = g3 (f3 k)
 
+-- Well, this is correct, but i still need to build `prf2` at `g3a'` call,
+-- which won't be obvious.
 total
-g3a : (n : Nat) -> {l : Nat} -> {auto prf1 : l = n} -> {auto prf2 : n = f3 (S n)} -> Int
-g3a Z {l = Z} = 1
-g3a (S Z) {l = S Z} = g3a Z
-g3a (S (S n')) {l = S (S l')} {prf1} {prf2} =
-  let r = g3a (f3 (S n')) {l = l'}
+g3a' : (n : Nat) -> {l : Nat} -> {auto prf1 : l = n} -> {auto prf2 : n = f3 (S n)} -> Int
+g3a' Z {l = Z} = 1
+g3a' (S Z) {l = S Z} = g3a' Z
+g3a' (S (S n')) {l = S (S l')} {prf1} {prf2} =
+  let r = g3a' (f3 (S n')) {l = l'}
               {prf1 = rewrite injective (injective prf1) in injective (injective prf2)}
               {prf2 = rewrite sym (injective prf2) in Refl}
+  in r
+
+-- Actually, this lemma expresses result of nested function call in terms of
+-- `n`. The same trick as before. I need it for constructing `prf2` in `g3a'`
+-- call and for (better) versions below.
+total
+f3Lemma : (n : Nat) -> n = f3 (S n)
+f3Lemma Z = Refl
+f3Lemma (S n') = let rec = f3Lemma n' in cong S rec
+
+-- I need `l` to be a decreasing argument for totality calculation as before.
+total
+g3a : (n : Nat) -> {l : Nat} -> {auto prf : l = n} -> Int
+g3a Z {l = Z} = 1
+g3a (S Z) {l = S Z} = g3a Z
+g3a (S (S n')) {l = S (S l')} {prf} =
+  let r = g3a (f3 (S n')) {l = l'}
+              {prf = rewrite injective (injective prf) in f3Lemma n'}
+  in r
+
+-- Or..
+total
+g3a2 : (n : Nat) -> {l : Nat} -> {auto prf : f3 n = l} -> Int
+g3a2 Z {l = Z} = 1
+g3a2 (S Z) {l = Z} = g3a2 Z
+g3a2 (S (S Z)) {l = S Z} {prf} = g3a2 (S Z)
+g3a2 (S (S n')) {l = S (S l')} {prf} =
+  let r = g3a2 (f3 (S n')) {l = l'}
+               {prf = rewrite injective prf in sym (f3Lemma l')}
+  in r
+
+-- Or i may use LTE, as suggested by Claude.
+
+total
+f3LTE : (n : Nat) -> f3 n `LTE` n
+f3LTE Z = LTEZero
+f3LTE (S Z) = LTEZero
+f3LTE (S (S n')) = LTESucc (f3LTE (S n'))
+
+total
+lteSelf : (n : Nat) -> LTE n n
+lteSelf Z = LTEZero
+lteSelf (S k) = LTESucc (lteSelf k)
+
+-- Not used.
+total
+succLte : {n : Nat} -> n `LTE` S n
+succLte {n = Z} = LTEZero
+succLte {n = S n'} = LTESucc (succLte {n = n'})
+
+f3Lemma2 : {n : Nat} -> f3 n `LTE` f3 (S n)
+f3Lemma2 {n = Z} = LTEZero
+f3Lemma2 {n = S n'} = lteSuccRight (lteSelf (f3 (S n')))
+
+f3Lemma3 : n `LTE` m -> f3 n `LTE` f3 m
+f3Lemma3 LTEZero = LTEZero
+f3Lemma3 {m = S Z} (LTESucc LTEZero) = LTEZero
+f3Lemma3 {m = S (S m')} (LTESucc LTEZero) = LTEZero
+f3Lemma3 (LTESucc (LTESucc lte)) = let rec = f3Lemma3 lte in LTESucc ?z5
+
+total
+neqLteIsLt : {n, m : Nat} -> Not (n = m) -> n `LTE` m -> n `LT` m
+neqLteIsLt {n = Z} {m = Z} neq _ = void (neq Refl)
+neqLteIsLt {n = Z} {m = S m'} _ _ = LTESucc LTEZero
+neqLteIsLt {n = S n'} {m = Z} _ _ impossible
+neqLteIsLt {n = S n'} {m = S m'} neq (LTESucc lte) =
+  let rec = neqLteIsLt (\neq' => neq (cong S neq')) lte
+  in  LTESucc rec
+
+total
+lemma : {n, m : Nat} -> {f : Nat -> Nat} ->
+        (forall x. f x `LTE` f (S x)) ->
+        n `LTE` m -> f n `LTE` f m
+lemma {f} mon lte =
+  case decEq n m of
+       Yes Refl => lteSelf (f m)
+       No neq => let r = neqLteIsLt neq lte
+                     r2 = lemma {f = f} mon r
+                     r3 = mon {x = n}
+                     r4 = transitive r3 r2
+                 in  ?c1
+
+-- This is not total, because for using `prf` as decreasing argument i
+-- shouldn't use nested function calls for constructing it, only rewrites. But
+-- this is not possible.
+--total
+g3a3 : (n : Nat) -> {auto prf : f3 n `LTE` n} -> Int
+g3a3 Z {prf = LTEZero} = 1
+g3a3 (S Z) {prf = LTEZero} = g3a Z
+g3a3 (S (S n')) {prf = LTESucc prf'} =
+  --let r = g3a3 (f3 (S n')) {prf = f3Lemma3 prf'}
+  let r = g3a3 (f3 (S n')) {prf = ?z0}
   in r
 
 data F3 : Nat -> Type where
@@ -341,10 +436,6 @@ g7b {n = S n'} (FS t) {l = S l'} {prf = prf'} =
               {prf = rewrite finToNatWeakNeutral t in
                      rewrite p' in Refl}
   in r
-
-lteSelf : (n : Nat) -> LTE n n
-lteSelf Z = LTEZero
-lteSelf (S k) = LTESucc (lteSelf k)
 
 -- This metric is incorrect, because i may choose `m = 1` for any `n` and
 -- there'll be no iterations at all.
