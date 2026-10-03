@@ -272,7 +272,7 @@ lemma {f} mon lte =
                      r2 = lemma {f = f} mon r
                      r3 = mon {x = n}
                      r4 = transitive r3 r2
-                 in  ?c1
+                 in  r4
 
 -- This is not total, because for using `prf` as decreasing argument i
 -- shouldn't use nested function calls for constructing it, only rewrites. But
