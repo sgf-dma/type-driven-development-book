@@ -226,12 +226,6 @@ g3a2 (S (S n')) {l = S (S l')} {prf} =
 -- Or i may use LTE, as suggested by Claude.
 
 total
-f3LTE : (n : Nat) -> f3 n `LTE` n
-f3LTE Z = LTEZero
-f3LTE (S Z) = LTEZero
-f3LTE (S (S n')) = LTESucc (f3LTE (S n'))
-
-total
 lteSelf : (n : Nat) -> LTE n n
 lteSelf Z = LTEZero
 lteSelf (S k) = LTESucc (lteSelf k)
@@ -242,18 +236,8 @@ succLte : {n : Nat} -> n `LTE` S n
 succLte {n = Z} = LTEZero
 succLte {n = S n'} = LTESucc (succLte {n = n'})
 
-f3Lemma2 : {n : Nat} -> f3 n `LTE` f3 (S n)
-f3Lemma2 {n = Z} = LTEZero
-f3Lemma2 {n = S n'} = lteSuccRight (lteSelf (f3 (S n')))
-
-f3Lemma3 : n `LTE` m -> f3 n `LTE` f3 m
-f3Lemma3 LTEZero = LTEZero
-f3Lemma3 {m = S Z} (LTESucc LTEZero) = LTEZero
-f3Lemma3 {m = S (S m')} (LTESucc LTEZero) = LTEZero
-f3Lemma3 (LTESucc (LTESucc lte)) = let rec = f3Lemma3 lte in LTESucc ?z5
-
 total
-neqLteIsLt : {n, m : Nat} -> Not (n = m) -> n `LTE` m -> n `LT` m
+neqLteIsLt : {n, m : Nat} -> Not (n = m) -> n `LTE` m -> S n `LTE` m
 neqLteIsLt {n = Z} {m = Z} neq _ = void (neq Refl)
 neqLteIsLt {n = Z} {m = S m'} _ _ = LTESucc LTEZero
 neqLteIsLt {n = S n'} {m = Z} _ _ impossible
@@ -262,28 +246,52 @@ neqLteIsLt {n = S n'} {m = S m'} neq (LTESucc lte) =
   in  LTESucc rec
 
 total
-lemma : {n, m : Nat} -> {f : Nat -> Nat} ->
-        (forall x. f x `LTE` f (S x)) ->
-        n `LTE` m -> f n `LTE` f m
-lemma {f} mon lte =
-  case decEq n m of
-       Yes Refl => lteSelf (f m)
-       No neq => let r = neqLteIsLt neq lte
-                     r2 = lemma {f = f} mon r
-                     r3 = mon {x = n}
-                     r4 = transitive r3 r2
-                 in  r4
+lemma : {n, m : Nat} ->
+        (f : Nat -> Nat) -> (mon : {x : Nat} -> f x `LTE` f (S x)) -> n `LTE` m -> f n `LTE` f m
+lemma {n} {m} f mon lte with (decEq n m)
+  lemma {n = m} {m = m} f mon lte | Yes Refl = lteSelf (f m)
+  _ | No neq with (neqLteIsLt neq lte)
+    lemma {n = n} {m = m} f mon lte    | No neq | LTEZero impossible
+    lemma {n = n} {m = S m'} f mon lte | No neq | LTESucc lte' =
+      let rec = lemma {n = n} {m = m'} f mon lte'
+      in  transitive rec (mon {x = m'})
 
--- This is not total, because for using `prf` as decreasing argument i
--- shouldn't use nested function calls for constructing it, only rewrites. But
--- this is not possible.
+f3Mon : {n : Nat} -> f3 n `LTE` f3 (S n)
+f3Mon {n = Z} = LTEZero
+f3Mon {n = S n'} = lteSuccRight (lteSelf (f3 (S n')))
+
+f3Lemma3 : {n, m : Nat} -> n `LTE` m -> f3 n `LTE` f3 m
+f3Lemma3 lte = lemma f3 f3Mon lte
+
+-- This is not total, because even though i can derive proof for recursive
+-- call, using nested function in proof breaks totality check. To not break
+-- totality, i should use `prf'` exactly as proof for recursive call and
+-- satisfy types only using `rewrite`-s, but this is not possible, because
+-- actual `LTE` values for `prf'` and `prf2`' are different.
 --total
 g3a3 : (n : Nat) -> {auto prf : f3 n `LTE` n} -> Int
 g3a3 Z {prf = LTEZero} = 1
-g3a3 (S Z) {prf = LTEZero} = g3a Z
+g3a3 (S Z) {prf = LTEZero} = g3a3 Z
 g3a3 (S (S n')) {prf = LTESucc prf'} =
-  --let r = g3a3 (f3 (S n')) {prf = f3Lemma3 prf'}
-  let r = g3a3 (f3 (S n')) {prf = ?z0}
+  let prf2 = f3Lemma3 prf'
+      r = g3a3 (f3 (S n')) {prf = prf2}
+  in r
+
+total
+f3LTE : (n : Nat) -> f3 n `LTE` n
+f3LTE Z = LTEZero
+f3LTE (S Z) = LTEZero
+f3LTE (S (S n')) = LTESucc (f3LTE (S n'))
+
+-- But after adding separate decreasing metric, i may use anything i want to
+-- derive proof for that metric.
+total
+g3a3' : (n : Nat) -> {l : Nat} -> {auto prf : f3 n `LTE` l} -> Int
+g3a3' Z = 1
+g3a3' (S Z) {l = l} = g3a3' Z {l = l} {prf = LTEZero}
+g3a3' (S (S n')) {l = S l'} {prf = LTESucc prf'} =
+  let prf2 = transitive (f3LTE (f3 (S n'))) prf'
+      r = g3a3' (f3 (S n')) {l = l'} {prf = prf2}
   in r
 
 data F3 : Nat -> Type where
