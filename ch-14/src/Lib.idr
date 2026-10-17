@@ -223,16 +223,44 @@ data ATMCmd : (ty : Type) -> ATMState -> (ty -> ATMState) -> Type where
   -- Allow 3 attempts.
   -- FIXME: If i add maxRetries to `ATMState`, it'll probably be inferred more
   -- seamlessly.
-  InsertCard : ATMCmd () Ready (const (PinAttempts {maxRetries = 4} 3))
+  -- InsertCard returns number of retries left for making easier subsequent
+  -- functions call (see `atm`).
+  InsertCard : {maxRetries : Nat} -> ATMCmd (Fin (S maxRetries)) Ready (\r => (PinAttempts r))
   EjectCard : ATMCmd () s (const Ready)
-  GetPin : ATMCmd PIN (PinAttempts left) (const (PinAttempts left))
-  CheckPin : {0 leftAttempts : Fin n} -> PIN
-              -> ATMCmd PinResult (PinAttempts (FS leftAttempts))
+  -- `GetPin` and `CheckPin` are separated, because `GetPin` just performs
+  -- basic IO and tries to obtain syntatically valid pin from a user, but
+  -- `CheckPin` uses some external services (like database) for accessing
+  -- correct pin and comparing it with the user input. Therefore, different
+  -- external services will have different `CheckPin` implementations, but
+  -- `GetPin` is always the same.
+  GetPin : ATMCmd (Maybe PIN) (PinAttempts p) (const (PinAttempts p))
+  -- Decrease left pin attempts unconditionally. I use this to process
+  -- `Nothing` returned by `GetPin`. And in current implementation i have no
+  -- other way to handle Nothing, except counting as failed pin attempt,
+  -- because i use left attempts as fuel (decreasing metric) to make `atm2`
+  -- total.
+  FailPin : ATMCmd () (PinAttempts (FS left)) (const (PinAttempts (weaken left)))
+  CheckPin : {0 left : Fin n} -> PIN ->
+             ATMCmd PinResult (PinAttempts (FS left))
                               (\res => case res of
-                                            Wrong => PinAttempts (weaken leftAttempts)
+                                            Wrong => PinAttempts (weaken left)
                                             Correct => Session)
-  GetAmount : ATMCmd Nat s (const s)
-  -- FIXME: Check that i have enough money.
+  -- Another version of `FailPin` and `CheckPin`. Here i store used attempts
+  -- in `PinAttempts` instead of left attempts. It's more complicated and, in
+  -- fact, has no sense, because i'll need decreasing argument anyway for
+  -- proving totality of `atm` below (and this decreasing argument is the
+  -- number of attempts left).
+  FailPinU : {0 used : Fin n} ->
+              {auto 0 prf : more = strengthen (FS used)} -> {auto 0 _ : IsJust more} ->
+              ATMCmd () (PinAttempts used) (const (PinAttempts (fromJust more)))
+  CheckPinU : {0 used : Fin n} -> PIN ->
+              {auto 0 prf : more = strengthen (FS used)} -> {auto 0 _ : IsJust more} ->
+              ATMCmd PinResult (PinAttempts used)
+                               (\res => case res of
+                                            Wrong => PinAttempts (fromJust more)
+                                            Correct => Session)
+  GetAmount : ATMCmd Nat Session (const Session)
+  -- FIXME: Check that i have enough money. Add available money to `Session`?
   Dispense : Nat -> ATMCmd () Session (const Session)
   Message : String -> ATMCmd () s (const s)
 
@@ -251,9 +279,6 @@ namespace ATMCmd
 --g {n = .(S (S n'))} (FS FZ) = g {n = (S n')} FZ
 --g {n = .(S (S n'))} (FS (FS k)) = ?a2 -- g {n} (FS (weaken k))
 
-0 foo : (x : Maybe a) -> IsJust x -> a
-foo (Just x) ItIsJust = x
-
 total
 finToNatWeakNeutral : (t : Fin n) -> finToNat (weaken t) = finToNat t
 finToNatWeakNeutral FZ = Refl
@@ -261,45 +286,86 @@ finToNatWeakNeutral (FS t') = cong S (finToNatWeakNeutral t')
 
 total
 atm2 : {left : Fin n} -> {l : Nat} -> {auto prf : l = finToNat left} -> ATMCmd () (PinAttempts left) (const Ready)
-atm2 {left = FZ} {l = Z} = do
+atm2 {l = Z} = do
   Message "No retries left."
   EjectCard
 atm2 {left = FS k} {l = S l'} {prf} = do
-  pin <- GetPin
-  r <- CheckPin pin
-  case r of
-       Correct => do
-         Message "Pin successfull."
-         sum <- GetAmount
-         Dispense sum
-         EjectCard
-       Wrong => do
-         Message "Wrong pin."
-         let r = atm2 {left = weaken k} {l = l'}
-                      {prf = rewrite (injective prf) in
-                             rewrite (finToNatWeakNeutral k) in
-                                     Refl}
-         r
+  mPin <- GetPin
+  let rec = atm2 {left = weaken k} {l = l'}
+                  {prf = rewrite (injective prf) in
+                         rewrite (finToNatWeakNeutral k) in
+                                 Refl}
+  case mPin of
+       Nothing => do
+         Message "Syntatically invalid pin"
+         -- I must count syntatically invalid pin as failed attempt, otherwise
+         -- function won't be total.
+         FailPin
+         rec
+       Just pin => do
+        r <- CheckPin pin
+        case r of
+             Correct => do
+               Message "Pin successfull."
+               sum <- GetAmount
+               Dispense sum
+               EjectCard
+             Wrong => do
+               Message "Wrong pin."
+               rec
+
+-- This function is not total, because argument in recursive call -
+-- `strengthen (FS used)` - in fact, increases. So, i need decreasing
+-- argument anyway, and the perfect fit for it is number of attempts left..
+partial
+atmUsed' : {n : Nat} -> (used : Fin n) -> ATMCmd () (PinAttempts used) (const Ready)
+atmUsed' used with (strengthen (FS used)) proof 0 eq
+  _ | Nothing = do
+        Message "No retries left."
+        EjectCard
+  _ | Just more = do
+        let rec = atmUsed' more
+        mPin <- GetPin
+        case mPin of
+             Nothing => do
+               Message "Syntatically invalid pin"
+               -- I must count syntatically invalid pin as failed attempt, otherwise
+               -- function won't be total.
+               FailPinU {prf = sym eq}
+               rec
+             Just pin => do
+                r <- CheckPinU pin {prf = sym eq}
+                case r of
+                     Correct => do
+                       Message "Pin successfull."
+                       sum <- GetAmount
+                       Dispense sum
+                       EjectCard
+                     Wrong => do
+                       Message "Wrong pin."
+                       rec
 
 total
 atm : ATMCmd () Ready (const Ready)
 atm = do
-  InsertCard
-  atm2 {left = 3} {l = 3}
+  leftAttempts <- InsertCard {maxRetries = 4}
+  atm2 {l = finToNat leftAttempts}
 
-readPin : (n : Nat) -> Vect m Nat -> IO (Vect (n+m) Nat)
+total
+readPin : (n : Nat) -> Vect m Nat -> IO (Maybe (Vect (n+m) Nat))
 -- I'll save pin in reverse, as i read it. And reverse only once at the
 -- end.
 readPin Z pin = do
   _ <- getLine
-  pure pin
+  pure (Just pin)
 readPin (S n') pin = do
   c <- getChar
   if isDigit c
-     then rewrite plusSuccRightSucc n' m in readPin n' (pin `snoc` (cast c `minus` 48))
-     else ?b1 --readPin n' pin
+     then let rec = readPin n' (pin `snoc` (cast c `minus` 48))
+          in rewrite plusSuccRightSucc n' m in rec
+     else pure Nothing
 
-partial
+total
 -- Note, that states do not matter here, in `run`. Only result does. States
 -- are for type-checking sequences of `ATMCmd` actions and here, when running
 -- `ATMCmd` actions, states are not relevant at all (not needed and not used).
@@ -307,7 +373,7 @@ runATMCmd : (correctPin : PIN) -> ATMCmd a s f -> IO a
 runATMCmd _ InsertCard = do
   putStrLn "Please insert your card (press enter)"
   x <- getLine
-  pure ()
+  pure last
 runATMCmd _ EjectCard = putStrLn "Card ejected"
 -- This number comes from `PIN` type. And changing it there, won't typecheck
 -- here and vice versa.
@@ -318,6 +384,12 @@ runATMCmd correctPin (CheckPin pin) = do
   if pin == correctPin
      then pure Correct
      else pure Wrong
+runATMCmd correctPin (CheckPinU pin) = do
+  if pin == correctPin
+     then pure Correct
+     else pure Wrong
+runATMCmd _ FailPin = pure ()
+runATMCmd _ FailPinU = pure ()
 runATMCmd _ GetAmount = do
   putStr "How much would you like? "
   am <- getLine
