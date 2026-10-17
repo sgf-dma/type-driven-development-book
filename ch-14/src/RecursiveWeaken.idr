@@ -439,6 +439,15 @@ g7b2 {n = n} k with (weakView2 k)
         r = (g7b2 {n = S n'} (weaken t) | ?a3)
     in r
 
+-- And even Pointwise doesn't help for the reasons..
+g7b4 : {0 n : Nat} -> Fin n -> Int
+g7b4 {n = n} k with (weakenNeutral k)
+  g7b4 {n = S Z} FZ | FZ = 1
+  g7b4 {n = S n'} (FS t) | FS rec =
+    let --r = (g7b2 {n = S n'} (weaken t) | p')
+        r = (g7b4 {n = S n'} (weaken t) | ?c3)
+    in r
+
 -- So, i need a view of a Fin, which recursively represents it as its weakened
 -- version.
 data WeakView3 : {n : Nat} -> Fin n -> Type where
@@ -466,3 +475,4 @@ g7b3 {n = n} k with (weakView3 k {l = finToNat k})
   g7b3 {n = S n'} (FS t') | Mk2WS rec =
     let r = (g7b3 {n = S n'} (weaken t') | rec)
     in  r
+
