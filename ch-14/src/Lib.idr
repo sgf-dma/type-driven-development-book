@@ -204,29 +204,37 @@ data ATMCmd : (ty : Type) -> ATMState -> (ty -> ATMState) -> Type where
 -- constant?
 data ATMState = Ready
               | PinAttempts (Fin maxRetries) -- CardInserted
-              | Session
+              | AuthSuccess
+              | Session Nat
 
 --pinRetry : PinResult -> (attemptsLeft : Fin n) -> ATMState
 --pinRetry Wrong FZ = CardLocked
 --pinRetry Wrong (FS k) = PinAttempts k
 --pinRetry Correct _ = Session
 
-pinRetry : {0 n : Nat} -> PinResult -> (attemptsLeft : Fin n) -> ATMState
-pinRetry Wrong FZ = PinAttempts {maxRetries = n} FZ
-pinRetry Wrong (FS k) = PinAttempts (weaken k)
-pinRetry Correct _ = Session
+--pinRetry : {0 n : Nat} -> PinResult -> (attemptsLeft : Fin n) -> ATMState
+--pinRetry Wrong FZ = PinAttempts {maxRetries = n} FZ
+--pinRetry Wrong (FS k) = PinAttempts (weaken k)
+--pinRetry Correct _ = Session
 
 PIN : Type
 PIN = Vect 4 Nat
+
+Balance : Type
+Balance = Nat
 
 data ATMCmd : (ty : Type) -> ATMState -> (ty -> ATMState) -> Type where
   -- Allow 3 attempts.
   -- FIXME: If i add maxRetries to `ATMState`, it'll probably be inferred more
   -- seamlessly.
-  -- InsertCard returns number of retries left for making easier subsequent
-  -- functions call (see `atm`).
-  InsertCard : {maxRetries : Nat} -> ATMCmd (Fin (S maxRetries)) Ready (\r => (PinAttempts r))
+  -- InsertCard returns number of retries left and card balance. One reason
+  -- for returning number of retries is just making easier subsequent
+  -- function call (see `atm`). The other is, well, given card may be e.g.
+  -- locked, so number of retries is indeed not known in advance.
+  InsertCard : ATMCmd (Nat, Nat) Ready
+                      (\(balance, maxAttempts) => PinAttempts (last {n = maxAttempts}))
   EjectCard : ATMCmd () s (const Ready)
+
   -- `GetPin` and `CheckPin` are separated, because `GetPin` just performs
   -- basic IO and tries to obtain syntatically valid pin from a user, but
   -- `CheckPin` uses some external services (like database) for accessing
@@ -240,11 +248,11 @@ data ATMCmd : (ty : Type) -> ATMState -> (ty -> ATMState) -> Type where
   -- because i use left attempts as fuel (decreasing metric) to make `atm2`
   -- total.
   FailPin : ATMCmd () (PinAttempts (FS left)) (const (PinAttempts (weaken left)))
-  CheckPin : {0 left : Fin n} -> PIN ->
+  CheckPin : {0 left : Fin n} -> {0 balance : Nat} -> PIN ->
              ATMCmd PinResult (PinAttempts (FS left))
                               (\res => case res of
                                             Wrong => PinAttempts (weaken left)
-                                            Correct => Session)
+                                            Correct => Session balance)
   -- Another version of `FailPin` and `CheckPin`. Here i store used attempts
   -- in `PinAttempts` instead of left attempts. It's more complicated and, in
   -- fact, has no sense, because i'll need decreasing argument anyway for
@@ -253,15 +261,15 @@ data ATMCmd : (ty : Type) -> ATMState -> (ty -> ATMState) -> Type where
   FailPinU : {0 used : Fin n} ->
               {auto 0 prf : more = strengthen (FS used)} -> {auto 0 _ : IsJust more} ->
               ATMCmd () (PinAttempts used) (const (PinAttempts (fromJust more)))
-  CheckPinU : {0 used : Fin n} -> PIN ->
+  CheckPinU : {0 used : Fin n} -> {balance : Nat} -> PIN ->
               {auto 0 prf : more = strengthen (FS used)} -> {auto 0 _ : IsJust more} ->
               ATMCmd PinResult (PinAttempts used)
                                (\res => case res of
                                             Wrong => PinAttempts (fromJust more)
-                                            Correct => Session)
-  GetAmount : ATMCmd Nat Session (const Session)
+                                            Correct => Session balance)
+  GetAmount : {balance : Nat} -> ATMCmd (Maybe (Fin (S balance))) (Session balance) (const (Session balance))
   -- FIXME: Check that i have enough money. Add available money to `Session`?
-  Dispense : Nat -> ATMCmd () Session (const Session)
+  Dispense : (d : Fin (S balance)) -> ATMCmd () (Session (rem + finToNat d)) (const (Session rem))
   Message : String -> ATMCmd () s (const s)
 
   PureATM : (a : ty) -> ATMCmd ty (f a) f
@@ -284,14 +292,31 @@ finToNatWeakNeutral : (t : Fin n) -> finToNat (weaken t) = finToNat t
 finToNatWeakNeutral FZ = Refl
 finToNatWeakNeutral (FS t') = cong S (finToNatWeakNeutral t')
 
+p1 : (s : Fin (S b)) -> b = r + finToNat s
+
 total
-atm2 : {left : Fin n} -> {l : Nat} -> {auto prf : l = finToNat left} -> ATMCmd () (PinAttempts left) (const Ready)
-atm2 {l = Z} = do
+atm3 : (balance : Nat) -> ATMCmd () (Session balance) (const Ready)
+atm3 balance = do
+  Message "Logged in!"
+  mSum <- GetAmount
+  case mSum of
+       Nothing => EjectCard
+       Just sum => do
+         (rewrite p1 {b = balance} sum in Dispense {rem = ?z1} {balance = balance} sum)
+         EjectCard
+
+-- FIXME: atm -> atm2 -> atm3 looks like continuation chain. Can i add
+-- continuations here?
+total
+atm2 : (balance : Nat) -> (attemptsLeft : Fin n) -> {l : Nat} ->
+                          {auto 0 prf : l = finToNat attemptsLeft} ->
+                          ATMCmd () (PinAttempts attemptsLeft) (const Ready)
+atm2 balance _ {l = Z} = do
   Message "No retries left."
   EjectCard
-atm2 {left = FS k} {l = S l'} {prf} = do
+atm2 balance (FS k) {l = S l'} {prf} = do
   mPin <- GetPin
-  let rec = atm2 {left = weaken k} {l = l'}
+  let rec = atm2 balance (weaken k) {l = l'}
                   {prf = rewrite (injective prf) in
                          rewrite (finToNatWeakNeutral k) in
                                  Refl}
@@ -303,13 +328,9 @@ atm2 {left = FS k} {l = S l'} {prf} = do
          FailPin
          rec
        Just pin => do
-        r <- CheckPin pin
-        case r of
-             Correct => do
-               Message "Pin successfull."
-               sum <- GetAmount
-               Dispense sum
-               EjectCard
+          r <- CheckPin pin {balance = balance}
+          case r of
+             Correct => atm3 balance
              Wrong => do
                Message "Wrong pin."
                rec
@@ -318,13 +339,13 @@ atm2 {left = FS k} {l = S l'} {prf} = do
 -- `strengthen (FS used)` - in fact, increases. So, i need decreasing
 -- argument anyway, and the perfect fit for it is number of attempts left..
 partial
-atmUsed' : {n : Nat} -> (used : Fin n) -> ATMCmd () (PinAttempts used) (const Ready)
-atmUsed' used with (strengthen (FS used)) proof 0 eq
+atm2' : {n : Nat} -> (used : Fin n) -> ATMCmd () (PinAttempts used) (const Ready)
+atm2' used with (strengthen (FS used)) proof 0 eq
   _ | Nothing = do
         Message "No retries left."
         EjectCard
   _ | Just more = do
-        let rec = atmUsed' more
+        let rec = atm2' more
         mPin <- GetPin
         case mPin of
              Nothing => do
@@ -334,23 +355,29 @@ atmUsed' used with (strengthen (FS used)) proof 0 eq
                FailPinU {prf = sym eq}
                rec
              Just pin => do
-                r <- CheckPinU pin {prf = sym eq}
+                -- Hardcoded balance.
+                let balance = 10
+                r <- CheckPinU pin {prf = sym eq} {balance = balance}
                 case r of
-                     Correct => do
-                       Message "Pin successfull."
-                       sum <- GetAmount
-                       Dispense sum
-                       EjectCard
+                     Correct => atm3 balance
                      Wrong => do
                        Message "Wrong pin."
                        rec
 
 total
+lastFinToNatIsSame : (n : Nat) -> finToNat (last {n = n}) = n
+lastFinToNatIsSame Z = Refl
+lastFinToNatIsSame (S n') = cong S (lastFinToNatIsSame n')
+
+total
 atm : ATMCmd () Ready (const Ready)
 atm = do
-  leftAttempts <- InsertCard {maxRetries = 4}
-  atm2 {l = finToNat leftAttempts}
+  (balance, maxAttempts) <- InsertCard
+  atm2 balance last {prf = rewrite lastFinToNatIsSame maxAttempts in Refl}
 
+-- FIXME: Use fuel (forever, in fact) which will be passed to the main loop to
+-- loop here until correct pin will be input. I.e. remove `Maybe` from here
+-- altogether!
 total
 readPin : (n : Nat) -> Vect m Nat -> IO (Maybe (Vect (n+m) Nat))
 -- I'll save pin in reverse, as i read it. And reverse only once at the
@@ -373,7 +400,8 @@ runATMCmd : (correctPin : PIN) -> ATMCmd a s f -> IO a
 runATMCmd _ InsertCard = do
   putStrLn "Please insert your card (press enter)"
   x <- getLine
-  pure last
+  -- FIXME: Query max retries and balance here?
+  pure (4, 10)
 runATMCmd _ EjectCard = putStrLn "Card ejected"
 -- This number comes from `PIN` type. And changing it there, won't typecheck
 -- here and vice versa.
@@ -390,13 +418,49 @@ runATMCmd correctPin (CheckPinU pin) = do
      else pure Wrong
 runATMCmd _ FailPin = pure ()
 runATMCmd _ FailPinU = pure ()
-runATMCmd _ GetAmount = do
+runATMCmd _ (GetAmount {balance}) = do
   putStr "How much would you like? "
   am <- getLine
-  pure (cast am)
+  -- FIXME: Check for digits?
+  pure (natToFin (cast am) (S balance))
 runATMCmd _ (Dispense amount) = putStrLn ("Grab your " ++ show amount ++ " money and go away!")
 runATMCmd _ (Message msg) = putStrLn msg
 runATMCmd _ (PureATM x) = pure x
 runATMCmd correctPin (BindATM mx f) = do
   x <- runATMCmd correctPin mx
   runATMCmd correctPin (f x)
+
+data T : (m : Nat) -> (ty : Type) -> Type where
+  MkT : T maxRetr (Fin (S maxRetr))
+
+data ATMCmd2 : (maxRetries : Nat) -> (ty : Type) -> ATMState -> (ty -> ATMState) -> Type where
+  InsertCard2 : ATMCmd2 m (Fin (S m)) Ready (\r => (PinAttempts r))
+
+{-
+  EjectCard2 : ATMCmd2 m () s (const Ready)
+  GetPin2 : ATMCmd2 m (Maybe PIN) (PinAttempts p) (const (PinAttempts p))
+  FailPin2 : ATMCmd2 m () (PinAttempts (FS left)) (const (PinAttempts (weaken left)))
+  CheckPin2 : {0 left : Fin n} -> PIN ->
+              ATMCmd2 m PinResult (PinAttempts (FS left))
+                              (\res => case res of
+                                            Wrong => PinAttempts (weaken left)
+                                            Correct => Session)
+
+  GetAmount2 : ATMCmd2 m Nat Session (const Session)
+  -- FIXME: Check that i have enough money. Add available money to `Session`?
+  Dispense2 : Nat -> ATMCmd2 m () Session (const Session)
+  Message2 : String -> ATMCmd2 m () s (const s)
+
+  PureATM2 : (a : ty) -> ATMCmd2 m ty (f a) f
+  BindATM2 : ATMCmd2 m a s1 f1 -> ((r : a) -> ATMCmd2 m b (f1 r) f2) -> ATMCmd2 m b s1 f2
+
+namespace ATMCmd2
+  export
+  (>>=) : ATMCmd2 m a s1 f1 -> ((r : a) -> ATMCmd2 m b (f1 r) f2) -> ATMCmd2 m b s1 f2
+  (>>=) = BindATM2
+
+  export
+  (>>) : ATMCmd2 m () s1 f1 -> ATMCmd2 m b (f1 ()) f2 -> ATMCmd2 m b s1 f2
+  mx >> my = BindATM2 mx (\() => my)
+
+-}
