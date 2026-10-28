@@ -111,7 +111,8 @@ g {n = n} m with (viewAsFSum m)
   --
   --    Can't solve constraint between: ?n [no locals in scope] and plus (finToNat ?m) ?k.
   --
-  -- The solution is to hide `m` in `finToNat m` behind another pattern
+  -- The solution is to hide `m` in `finToNat m` by abstracting it as another
+  -- variable
   -- (from https://idris-lang.zulipchat.com/#narrow/channel/556789-help/topic/.E2.9C.94.20View.20Nat.20as.20a.20sum.20of.20Fin.20and.20a.20remainder/with/635151262):
   g {n = n} m | MkFSum {n = n} m k prf with 0 (finToNat m) proof 0 qrf
     -- and now if i pattern match on `Refl`, it reifies `n` to `r + k` and `m`
@@ -119,34 +120,25 @@ g {n = n} m with (viewAsFSum m)
     g {n = r + k} m | MkFSum {n = r + k} m k Refl | r = 1
 
 -- I may also try to define `FinSum` _without_ binding resulting sum to
--- particular `Fin` (in essence, similar to `Sum`). But now, first,
--- i need `NoFSum` again, because sine sum is not bound to `Fin`'s index, it
--- may too small for given `Fin`. In fact, i loose all benefits of having
--- `Fin` instead of plain `Nat` in the first place!
+-- particular `Fin` (in essence, similar to `Sum`). Note, that i don't need
+-- `NoFSum3` constructor here, because resulting type index is constructed
+-- from values _provided_ by constructor: whatever `m` and `k` will be,
+-- `FSum3`'s first index will `finToNat m + k`. So, for any `m` and `k` i can
+-- successfully calculated type.
 data FSum3 : (n : Nat) -> Fin p -> Type where
   MkFSum3 : (m : Fin n) -> (k : Nat) -> FSum3 (finToNat m + k) m
-  NoFSum3 : FSum3 n m
 
-viewAsFSum3 : (n : Nat) -> (m : Fin p) -> FSum3 n m
-viewAsFSum3 Z _ = NoFSum3
-viewAsFSum3 (S n') FZ = MkFSum3 FZ (S n')
-viewAsFSum3 (S n') (FS t) =
-  case viewAsFSum3 n' t of
-       MkFSum3 t k => MkFSum3 (FS t) k
-       NoFSum3 => NoFSum3
-
--- And second, i again hit the same error from recursive definition
--- `m : Fin (finToNat m + k)` and now i can't workaround it, because i can't
--- defer reify of `n` as i did in `g` by not matching on `Refl` immediately.
--- I can't match on `finToNat m` beforehand either, because i don't have `m`
--- until i match on `viewAsFSum3` result.
---g3 : {n : Nat} -> (t : Fin n) -> Int
---g3 {n = n} t with (viewAsFSum3 n t)
---  g3 {n = n2} m | MkFSum3 {n = n2} m k = ?z1
---  g3 {n = n} t | NoFSum3 = ?z2
-
---data FSum2 : (n : Nat) -> Fin n -> Type where
---  MkFSumZ : FSum2 (Z + S n) FZ
---  MkFSumS : {n, m : Nat} -> {t : Fin n} ->
---            (rec : FSum2 (finToNat t + m) t) -> FSum2 (S (finToNat t + m))  (FS t)
+-- But i can't define covering function, because i can't defer constraint
+-- check: when i pattern match on `rec` value of type `rec : FSum3 n' t`,
+-- where `t : Fin n'`, i need to solve constraint `m : Fin (finToNat m + k)`,
+-- which isn't possible. And i can neither defer it, as was done in `g`, or
+-- nor abstract `finToNat m` earlier, because i don't have `m` _before_ i
+-- pattern match on `rec`.
+viewAsFSum3 : {n : Nat} -> (m : Fin n) -> FSum3 n m
+viewAsFSum3 {n = S n'} FZ = MkFSum3 FZ (S n')
+viewAsFSum3 {n = S n'} (FS t) =
+  let rec = viewAsFSum3 t
+  in ?z1 {-case rec of
+          MkFSum3 {n = n2} m k => ?z1
+          -}
 
