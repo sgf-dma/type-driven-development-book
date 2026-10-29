@@ -113,11 +113,20 @@ g {n = n} m with (viewAsFSum m)
   --
   -- The solution is to hide `m` in `finToNat m` by abstracting it as another
   -- variable
-  -- (from https://idris-lang.zulipchat.com/#narrow/channel/556789-help/topic/.E2.9C.94.20View.20Nat.20as.20a.20sum.20of.20Fin.20and.20a.20remainder/with/635151262):
-  g {n = n} m | MkFSum {n = n} m k prf with 0 (finToNat m) proof 0 qrf
+  -- (solution from https://idris-lang.zulipchat.com/#narrow/channel/556789-help/topic/.E2.9C.94.20View.20Nat.20as.20a.20sum.20of.20Fin.20and.20a.20remainder/with/635151262):
+  g {n = n} m | MkFSum {n = n} m k prf with 0 (finToNat m)
     -- and now if i pattern match on `Refl`, it reifies `n` to `r + k` and `m`
     -- to `m : Fin (r + k)`, and there's no recursive definition!
-    g {n = r + k} m | MkFSum {n = r + k} m k Refl | r = 1
+    _ | r with (prf)
+      g {n = r + k} m | MkFSum {n = r + k} m k prf | r | Refl = 1
+
+-- I may do two intermediate steps in one step as suggested at the link above:
+g' : {n : Nat} -> (m : Fin n) -> Int
+g' {n = n} m with (viewAsFSum m)
+  _ | MkFSum {n = n} m k prf with 0 (finToNat m) proof 0 qrf
+    g' {n = .(r + k)} m | MkFSum {n = .(r + k)} m k Refl | r = 1
+
+
 
 -- I may also try to define `FinSum` _without_ binding resulting sum to
 -- particular `Fin` (in essence, similar to `Sum`). Note, that i don't need
