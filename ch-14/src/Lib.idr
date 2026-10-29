@@ -267,9 +267,15 @@ data ATMCmd : (ty : Type) -> ATMState -> (ty -> ATMState) -> Type where
                                (\res => case res of
                                             Wrong => PinAttempts (fromJust more)
                                             Correct => Session balance)
+  -- FIXME: Use fuel until correct balance value will be input.
   GetAmount : {balance : Nat} -> ATMCmd (Maybe (Fin (S balance))) (Session balance) (const (Session balance))
   -- FIXME: Check that i have enough money. Add available money to `Session`?
-  Dispense : (d : Fin (S balance)) -> ATMCmd () (Session (rem + finToNat d)) (const (Session rem))
+  Dispense : (d : Fin (S balance)) -> ATMCmd () (Session (finToNat d + rem)) (const (Session rem))
+
+  -- FIXME: And where is the proof, that d + rem is not greater, than balance?
+  GetAmount2 : ATMCmd Nat (Session balance) (\d => Session (d + rem))
+  -- FIXME: Check that i have enough money. Add available money to `Session`?
+  Dispense2 : (d : Nat) -> ATMCmd () (Session (d + rem)) (const (Session rem))
   Message : String -> ATMCmd () s (const s)
 
   PureATM : (a : ty) -> ATMCmd ty (f a) f
@@ -284,15 +290,48 @@ namespace ATMCmd
   (>>) : ATMCmd () s1 f1 -> ATMCmd b (f1 ()) f2 -> ATMCmd b s1 f2
   mx >> my = BindATM mx (\() => my)
 
---g {n = .(S (S n'))} (FS FZ) = g {n = (S n')} FZ
---g {n = .(S (S n'))} (FS (FS k)) = ?a2 -- g {n} (FS (weaken k))
+data FSum : (n : Nat) -> Fin n -> Type where
+  MkFSum : (m : Fin n) -> (k : Nat) -> (prf : n = finToNat m + k) -> FSum n m
+
+viewAsFSum : {n : Nat} -> (m : Fin n) -> FSum n m
+viewAsFSum {n = S n'} FZ = MkFSum FZ (S n') Refl
+viewAsFSum {n = S n'} (FS m') with (viewAsFSum m')
+  viewAsFSum {n = S n'} (FS m2) | MkFSum m2 k prf = MkFSum (FS m2) k (cong S prf)
+
+data FSum2 : (n : Nat) -> Fin (S n) -> Type where
+  MkFSum2 : (m : Fin (S n)) -> (k : Nat) -> (prf : n = finToNat m + k) -> FSum2 n m
+
+viewAsFSum2 : {n : Nat} -> (m : Fin (S n)) -> FSum2 n m
+viewAsFSum2 {n = n'} FZ = MkFSum2 FZ n' Refl
+viewAsFSum2 {n = S n'} (FS FZ) = MkFSum2 (FS FZ) n' Refl
+viewAsFSum2 {n = S n'} (FS (FS m')) with (viewAsFSum2 (FS m'))
+  _ | MkFSum2 (FS m') k prf = MkFSum2 (FS (FS m')) k (cong S prf)
 
 total
-finToNatWeakNeutral : (t : Fin n) -> finToNat (weaken t) = finToNat t
-finToNatWeakNeutral FZ = Refl
-finToNatWeakNeutral (FS t') = cong S (finToNatWeakNeutral t')
+atm4 : {balance : Nat} -> (d : Fin balance) -> ATMCmd () (Session balance) (const Ready)
+atm4 {balance} d with (viewAsFSum d)
+  atm4 {balance} m | MkFSum m k prf with (finToNat m)
+      atm4 {balance = r + k} m | MkFSum m k Refl | r = do
+        Dispense2 r
+        EjectCard
 
-p1 : (s : Fin (S b)) -> b = r + finToNat s
+total
+atm4' : {balance : Nat} -> (d : Fin (S balance)) -> ATMCmd () (Session balance) (const Ready)
+atm4' {balance} FZ = EjectCard
+atm4' {balance} (FS d) with (viewAsFSum (FS d))
+  atm4' {balance} (FS m) | MkFSum (FS m) k prf with (finToNat m)
+    -- Note, that i even don't need to use `injective` explicitly!
+    atm4' {balance = r + k} (FS m) | MkFSum (FS m) k Refl | r = do
+        Dispense2 r
+        EjectCard
+
+total
+atm4'2 : {balance : Nat} -> (d : Fin (S balance)) -> ATMCmd () (Session balance) (const Ready)
+atm4'2 {balance} d with (viewAsFSum2 d)
+  _ | MkFSum2 d k prf with (finToNat d)
+    atm4'2 {balance = r + k} d | MkFSum2 d k Refl | r =  do
+        Dispense2 r
+        EjectCard
 
 total
 atm3 : (balance : Nat) -> ATMCmd () (Session balance) (const Ready)
@@ -302,8 +341,18 @@ atm3 balance = do
   case mSum of
        Nothing => EjectCard
        Just sum => do
+         --atm4 {balance = balance} sum
+         --Dispense2 (finToNat sum)
+         EjectCard
+         {- do
          (rewrite p1 {b = balance} sum in Dispense {rem = ?z1} {balance = balance} sum)
          EjectCard
+         -}
+
+total
+finToNatWeakNeutral : (t : Fin n) -> finToNat (weaken t) = finToNat t
+finToNatWeakNeutral FZ = Refl
+finToNatWeakNeutral (FS t') = cong S (finToNatWeakNeutral t')
 
 -- FIXME: atm -> atm2 -> atm3 looks like continuation chain. Can i add
 -- continuations here?
@@ -392,7 +441,7 @@ readPin (S n') pin = do
           in rewrite plusSuccRightSucc n' m in rec
      else pure Nothing
 
-total
+partial
 -- Note, that states do not matter here, in `run`. Only result does. States
 -- are for type-checking sequences of `ATMCmd` actions and here, when running
 -- `ATMCmd` actions, states are not relevant at all (not needed and not used).
